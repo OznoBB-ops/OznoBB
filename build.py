@@ -172,6 +172,68 @@ def main():
     print(f"\n✅ Готово! Список сохранён в {OUTPUT_FILE}")
 
 if __name__ == "__main__":
+    main()    print("\n📦 Шаг 1: Загрузка подписок...")
+    all_proxies = fetch_subscriptions(SUBSCRIPTIONS)
+    print(f"\n📊 Всего уникальных прокси: {len(all_proxies)}")
+    
+    if len(all_proxies) == 0:
+        print("❌ Нет прокси для проверки!")
+        with open(OUTPUT_FILE, 'w') as f:
+            f.write("# Нет доступных прокси\n")
+        return
+    
+    print(f"\n⏳ Шаг 2: Проверка TCP ({MAX_WORKERS} потоков)...")
+    working_proxies = []
+    checked = 0
+    total = len(all_proxies)
+    
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(check_proxy, proxy): proxy for proxy in all_proxies}
+        
+        for future in as_completed(futures):
+            checked += 1
+            try:
+                result = future.result(timeout=10)
+                if result:
+                    proxy, ping = result
+                    working_proxies.append((proxy, ping))
+                    print(f"   ✅ {proxy[:50]}... {ping:.0f} мс")
+            except:
+                pass
+            
+            if checked % 20 == 0:
+                print(f"   ⏳ Проверено {checked}/{total}...")
+    
+    # Сортируем по пингу
+    working_proxies.sort(key=lambda x: x[1])
+    
+    # Оставляем только лучшие
+    if len(working_proxies) > MAX_PROXIES:
+        working_proxies = working_proxies[:MAX_PROXIES]
+    
+    print(f"\n🎯 Рабочих прокси: {len(working_proxies)}")
+    
+    # Сохраняем результат
+    with open(OUTPUT_FILE, 'w') as f:
+        if working_proxies:
+            for proxy, _ in working_proxies:
+                f.write(f"{proxy}\n")
+        else:
+            f.write("# Нет рабочих прокси\n")
+    
+    # Сохраняем отчёт
+    with open("report.txt", 'w') as f:
+        f.write(f"Собрано: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"Всего прокси: {len(working_proxies)}\n")
+        if working_proxies:
+            f.write(f"Средний пинг: {sum(p for _, p in working_proxies) / len(working_proxies):.0f} мс\n")
+        f.write("\nТоп-10:\n")
+        for proxy, ping in working_proxies[:10]:
+            f.write(f"  {ping:.0f} мс | {proxy[:80]}...\n")
+    
+    print(f"\n✅ Готово! Список сохранён в {OUTPUT_FILE}")
+
+if __name__ == "__main__":
     main()        response = sock.recv(1024)
         sock.close()
         
