@@ -129,7 +129,6 @@ def check_proxy(proxy_link):
             if result == 0:
                 proxy_ping = (time.time() - start) * 1000
                 if proxy_ping < 1000:
-                    # Средний пинг (тверской сайт + прокси)
                     avg_ping = (ping + proxy_ping) / 2
                     return proxy_link, avg_ping
         except:
@@ -143,7 +142,7 @@ def check_proxy(proxy_link):
 
 def main():
     print("=" * 50)
-    print("🚀 СБОРКА REALITY-ПРОКСИ (РОТАЦИЯ ТВЕРСКИХ САЙТОВ)")
+    print("🚀 СБОРКА REALITY-ПРОКСИ (ТВЕРЬ + TCP)")
     print("=" * 50)
     
     print("\n📦 Шаг 1: Загрузка подписок...")
@@ -175,27 +174,38 @@ def main():
     working_proxies = []
     checked = 0
     total = len(reality_proxies)
+    stop_checking = False
     
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {executor.submit(check_proxy, proxy): proxy for proxy in reality_proxies}
         
         for future in as_completed(futures):
+            if stop_checking:
+                for f in futures:
+                    f.cancel()
+                break
+            
             checked += 1
             try:
                 result = future.result(timeout=10)
                 if result:
                     proxy, avg_ping = result
                     working_proxies.append((proxy, avg_ping))
-                    print(f"   ✅ {proxy[:50]}... {avg_ping:.0f} мс")
+                    print(f"   ✅ {proxy[:50]}... {avg_ping:.0f} мс ({len(working_proxies)}/{MAX_PROXIES})")
+                    
+                    if len(working_proxies) >= MAX_PROXIES:
+                        print(f"   🎯 Достигнут лимит {MAX_PROXIES}, останавливаем проверку...")
+                        stop_checking = True
+                        for f in futures:
+                            f.cancel()
+                        break
             except:
                 pass
             
-            if checked % 25 == 0:
-                print(f"   ⏳ Проверено {checked}/{total}...")
+            if checked % 25 == 0 and not stop_checking:
+                print(f"   ⏳ Проверено {checked}/{total}... ({len(working_proxies)} найдено)")
     
     working_proxies.sort(key=lambda x: x[1])
-    if len(working_proxies) > MAX_PROXIES:
-        working_proxies = working_proxies[:MAX_PROXIES]
     
     print(f"\n🎯 Рабочих REALITY-прокси: {len(working_proxies)}")
     
