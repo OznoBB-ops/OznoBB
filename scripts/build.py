@@ -113,6 +113,15 @@ def parse_target(line):
     m = URI_RE.match(line.strip())
     return (m.group(1), int(m.group(2))) if m else None
 
+def is_vless(line):
+    """Проверяем что это VLESS протокол"""
+    return line.strip().lower().startswith("vless://")
+
+def is_reality(line):
+    """Проверяем что это VLESS + Reality"""
+    s = line.lower()
+    return "security=reality" in s
+
 def resolve(host):
     try:
         socket.inet_aton(host)
@@ -195,22 +204,33 @@ def main():
         seen.add(s)
         unique.append(s)
 
-    # ============ ОРИГИНАЛЬНАЯ ПОДПИСКА (только дедуп) ============
+    # ФИЛЬТР: оставляем только VLESS + SNI правила (не URI)
+    vless_and_rules = []
+    removed_count = 0
+    for line in unique:
+        if is_vless(line) or not parse_target(line):  # VLESS или не-URI (правила)
+            vless_and_rules.append(line)
+        else:
+            removed_count += 1
+    
+    print(f"\n=== Filtered: {len(vless_and_rules)} VLESS+rules kept, {removed_count} non-VLESS removed ===")
+
+    # ============ ОРИГИНАЛЬНАЯ ПОДПИСКА (только VLESS + правила) ============
     with open(OUT_ORIGINAL, "w", encoding="utf-8") as f:
-        for line in unique:
+        for line in vless_and_rules:
             f.write(line + "\n")
-    print(f"\n=== Original: {len(unique)} lines -> {OUT_ORIGINAL} ===")
+    print(f"\n=== Original: {len(vless_and_rules)} lines -> {OUT_ORIGINAL} ===")
 
     # ============ ПРОВЕРЕННАЯ ПОДПИСКА (гео + пинг из РФ) ============
     servers = []
     other = []
-    for line in unique:
-        if parse_target(line):
+    for line in vless_and_rules:
+        if parse_target(line):  # только URI (VLESS серверы)
             servers.append(line)
         else:
-            other.append(line)
+            other.append(line)  # правила (SNI, CIDR)
 
-    print(f"\n=== Checking {len(servers)} servers, {len(other)} rules ===")
+    print(f"\n=== Checking {len(servers)} VLESS servers, {len(other)} rules ===")
 
     def job(line):
         t = parse_target(line)
@@ -218,7 +238,8 @@ def main():
         ip = resolve(host)
         cc = geo_country(ip)
         ms = ping_from_russia(host)
-        return line, cc, ms
+        reality = is_reality(line)
+        return line, cc, ms, reality
 
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
@@ -237,20 +258,24 @@ def main():
     dead_count = len(results) - len(alive)
     print(f"\n=== Filtered: {len(alive)} alive, {dead_count} dead removed ===")
 
-    # Сортировка по пингу (быстрые сверху)
-    alive.sort(key=lambda x: (x[2], x[0]))
+    # Сортировка: Reality сверху, потом по пингу
+    alive.sort(key=lambda x: (
+        0 if x[3] else 1,  # Reality первыми
+        x[2],              # потом по пингу
+        x[0]
+    ))
 
     # Нумерация по странам
     country_counters = {}
     numbered = []
-    for line, cc, ms in alive:
+    for line, cc, ms, reality in alive:
         cc_key = cc or "??"
         if cc_key not in country_counters:
             country_counters[cc_key] = 0
         country_counters[cc_key] += 1
         numbered.append((line, cc, country_counters[cc_key]))
 
-    # Добавляем CIDR/SNI правила в конец (без нумерации)
+    # Добавляем SNI правила в конец (без нумерации)
     for line in other:
         numbered.append((line, None, None))
 
