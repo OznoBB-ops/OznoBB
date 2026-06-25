@@ -93,10 +93,6 @@
     {
       "type": "block",
       "tag": "block"
-    },
-    {
-      "type": "dns",
-      "tag": "dns-out"
     }
   ],
   "route": {
@@ -132,10 +128,6 @@
           "skrepysh-proxy"
         ],
         "outbound": "PROXY"
-      },
-      {
-        "protocol": "dns",
-        "outbound": "dns-out"
       }
     ],
     "rule_set": [
@@ -143,7 +135,7 @@
         "tag": "ru-bundle",
         "type": "remote",
         "format": "yaml",
-        "url": "https://github.com/legiz-ru/mihomo-rule-sets/raw/main/ru-bundle/rule.yaml",
+        "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/main/ru-bundle/rule.yaml",
         "update_interval": "24h"
       },
       {
@@ -164,7 +156,7 @@
         "tag": "torrent-trackers",
         "type": "remote",
         "format": "mrs",
-        "url": "https://github.com/legiz-ru/mihomo-rule-sets/raw/main/other/torrent-trackers.mrs",
+        "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/main/other/torrent-trackers.mrs",
         "update_interval": "24h"
       },
       {
@@ -185,7 +177,7 @@
         "tag": "skrepysh-proxy",
         "type": "remote",
         "format": "yaml",
-        "url": "https://github.com/Skrepysh/mihomo-rulesets/raw/refs/heads/main/skrepysh-rulesets/skrepysh-proxy.yaml",
+        "url": "https://raw.githubusercontent.com/Skrepysh/mihomo-rulesets/refs/heads/main/skrepysh-rulesets/skrepysh-proxy.yaml",
         "update_interval": "24h"
       }
     ],
