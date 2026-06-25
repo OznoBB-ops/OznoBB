@@ -23,5 +23,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add subscription.txt original.txt
-          git diff --staged --quiet || git commit -m "auto: update $(date -u +%FT%TZ)"
-          git push
+          git diff --staged --quiet || (git commit -m "auto: update $(date -u +%FT%TZ)" && git pull --rebase origin main && git push)
