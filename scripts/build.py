@@ -1,25 +1,111 @@
 #!/usr/bin/env python3
-import subprocess, re, urllib.request, time, concurrent.futures
+import re, urllib.request, json, socket, time, concurrent.futures
 
-SOURCES = [
-    "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
-    "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
-    "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt",
-    "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-all.txt",
-    "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
+MIRRORS = [
+    # ============ zieng2/wl ============
+    {
+        "name": "zieng2/vless_universal.txt",
+        "urls": [
+            "https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt",
+            "https://codeberg.org/zieng2/wl/raw/branch/main/vless_universal.txt",
+            "https://gitlab.com/zieng2/wl/raw/main/vless_universal.txt",
+            "https://hub.mos.ru/zieng2/wl/raw/main/list_universal.txt",
+            "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
+        ],
+    },
+    # ============ igareck: BLACK_VLESS_RUS ============
+    {
+        "name": "igareck/BLACK_VLESS_RUS.txt",
+        "urls": [
+            "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS.txt",
+            "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/BLACK_VLESS_RUS.txt",
+            "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_VLESS_RUS.txt",
+            "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_VLESS_RUS.txt",
+            "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/BLACK_VLESS_RUS.txt",
+            "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/BLACK_VLESS_RUS.txt",
+            "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
+        ],
+    },
+    # ============ igareck: BLACK_SS+All_RUS ============
+    {
+        "name": "igareck/BLACK_SS+All_RUS.txt",
+        "urls": [
+            "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_SS%2BAll_RUS.txt",
+            "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/BLACK_SS%2BAll_RUS.txt",
+            "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_SS%2BAll_RUS.txt",
+            "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_SS%2BAll_RUS.txt",
+            "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/BLACK_SS%2BAll_RUS.txt",
+            "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/BLACK_SS%2BAll_RUS.txt",
+            "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt",
+        ],
+    },
+    # ============ igareck: WHITE-CIDR-RU-all ============
+    {
+        "name": "igareck/WHITE-CIDR-RU-all.txt",
+        "urls": [
+            "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/WHITE-CIDR-RU-all.txt",
+            "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/WHITE-CIDR-RU-all.txt",
+            "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-CIDR-RU-all.txt",
+            "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-CIDR-RU-all.txt",
+            "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/WHITE-CIDR-RU-all.txt",
+            "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/WHITE-CIDR-RU-all.txt",
+            "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-all.txt",
+        ],
+    },
+    # ============ igareck: WHITE-SNI-RU-all ============
+    {
+        "name": "igareck/WHITE-SNI-RU-all.txt",
+        "urls": [
+            "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/WHITE-SNI-RU-all.txt",
+            "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/WHITE-SNI-RU-all.txt",
+            "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-SNI-RU-all.txt",
+            "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-SNI-RU-all.txt",
+            "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/WHITE-SNI-RU-all.txt",
+            "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/WHITE-SNI-RU-all.txt",
+            "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
+        ],
+    },
 ]
 
-OUT = "subscription.txt"
-PING_TIMEOUT = 3
+OUT_CHECKED = "subscription.txt"
+OUT_ORIGINAL = "original.txt"
+GEO_TIMEOUT = 4
+PING_TIMEOUT = 15
 
-def fetch(url):
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=20) as r:
-            return r.read().decode("utf-8", errors="ignore")
-    except Exception as e:
-        print(f"fetch fail {url}: {e}")
-        return ""
+RU_NODES = [
+    "ru1.node.check-host.net",
+    "ru2.node.check-host.net",
+    "ru3.node.check-host.net",
+]
+
+HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+
+def flag(cc):
+    if not cc or len(cc) != 2:
+        return "🏴‍☠️"
+    return chr(ord(cc[0].upper()) + 127397) + chr(ord(cc[1].upper()) + 127397)
+
+def fetch_with_fallback(mirror_entry):
+    name = mirror_entry["name"]
+    for url in mirror_entry["urls"]:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                if r.status == 200:
+                    data = r.read().decode("utf-8", errors="ignore")
+                    if data.strip():
+                        print(f"  ✓ {name} from {url}")
+                        return data
+        except Exception as e:
+            print(f"  ✗ {name} failed {url}: {e}")
+            continue
+    print(f"  ⚠ ALL MIRRORS FAILED for {name}")
+    return ""
+
+def api_get(url):
+    req = urllib.request.Request(url, headers=HEADERS)
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read().decode("utf-8"))
 
 URI_RE = re.compile(r"^[a-z]+://[^@]*@([^:/#\s]+):(\d+)", re.I)
 
@@ -27,24 +113,68 @@ def parse_target(line):
     m = URI_RE.match(line.strip())
     return (m.group(1), int(m.group(2))) if m else None
 
-def measure_ping(host, port):
+def resolve(host):
     try:
-        t0 = time.time()
-        cmd = f"echo | timeout {PING_TIMEOUT}s openssl s_client -connect {host}:{port} -servername {host} 2>/dev/null"
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        ms = int((time.time() - t0) * 1000)
-        if r.returncode != 0 or ms > PING_TIMEOUT * 1000:
-            return None
-        return ms
+        socket.inet_aton(host)
+        return host
+    except OSError:
+        pass
+    try:
+        return socket.gethostbyname(host)
     except Exception:
         return None
 
-def rename(line, ping_ms):
+def geo_country(ip):
+    if not ip:
+        return None
+    try:
+        data = api_get(f"https://ipwho.is/{ip}")
+        cc = data.get("country_code")
+        if cc and len(cc) == 2:
+            return cc.upper()
+    except Exception as e:
+        print(f"geo fail {ip}: {e}")
+    return None
+
+def ping_from_russia(host):
+    try:
+        nodes_param = "&".join(f"node[]={n}" for n in RU_NODES)
+        url = f"https://api.check-host.net/check-ping?host={host}&max_nodes=3&{nodes_param}"
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            start = json.loads(r.read().decode("utf-8"))
+
+        request_id = start.get("request_id")
+        if not request_id:
+            return None
+
+        result_url = f"https://api.check-host.net/check-result/{request_id}"
+        for _ in range(6):
+            time.sleep(3)
+            try:
+                result = api_get(result_url)
+                pings = []
+                for node_name, node_data in result.items():
+                    if node_data and isinstance(node_data, list):
+                        for packet in node_data:
+                            if isinstance(packet, list) and len(packet) >= 2 and packet[1] is not None:
+                                pings.append(packet[1])
+                if pings:
+                    return int(sum(pings) / len(pings))
+            except Exception:
+                continue
+        return None
+    except Exception as e:
+        print(f"ping fail {host}: {e}")
+        return None
+
+def rename_checked(line, cc, ping_ms):
     line = line.strip()
     if not line or line.startswith("#"):
         return line
     base = re.sub(r"#.*$", "", line)
-    tag = "🇷🇺RU"
+    f = flag(cc)
+    tag = f"{f}{cc or '??'}"
     if ping_ms is not None:
         tag += f"_{ping_ms}ms"
     else:
@@ -52,10 +182,14 @@ def rename(line, ping_ms):
     return f"{base}#{tag}"
 
 def main():
+    print("=== Fetching sources with fallback ===")
     all_lines = []
-    for url in SOURCES:
-        all_lines.extend(fetch(url).splitlines())
+    for entry in MIRRORS:
+        data = fetch_with_fallback(entry)
+        if data:
+            all_lines.extend(data.splitlines())
 
+    # Дедупликация
     seen = set()
     unique = []
     for l in all_lines:
@@ -64,23 +198,58 @@ def main():
         seen.add(s)
         unique.append(s)
 
+    # ============ ОРИГИНАЛЬНАЯ ПОДПИСКА (только дедуп) ============
+    with open(OUT_ORIGINAL, "w", encoding="utf-8") as f:
+        for line in unique:
+            f.write(line + "\n")
+    print(f"\n=== Original: {len(unique)} lines -> {OUT_ORIGINAL} ===")
+
+    # ============ ПРОВЕРЕННАЯ ПОДПИСКА (гео + пинг) ============
+    servers = []
+    other = []
+    for line in unique:
+        if parse_target(line):
+            servers.append(line)
+        else:
+            other.append(line)
+
+    print(f"\n=== Checking {len(servers)} servers, {len(other)} rules ===")
+
     def job(line):
         t = parse_target(line)
-        if not t: return line, None
-        return line, measure_ping(*t)
+        host = t[0]
+        ip = resolve(host)
+        cc = geo_country(ip)
+        ms = ping_from_russia(host)
+        return line, cc, ms
 
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as ex:
-        futs = {ex.submit(job, l): l for l in unique}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+        futs = {ex.submit(job, l): l for l in servers}
+        done = 0
+        total = len(futs)
         for f in concurrent.futures.as_completed(futs):
-            results.append(f.result())
+            done += 1
+            r = f.result()
+            results.append(r)
+            if done % 20 == 0:
+                print(f"progress: {done}/{total}")
 
-    results.sort(key=lambda x: (1, 99999, x[0]) if x[1] is None else (0, x[1], x[0]))
+    # Сортировка: быстрые сверху, не отвечающие в конце
+    results.sort(key=lambda x: (
+        0 if x[2] is not None else 1,
+        x[2] if x[2] is not None else 99999,
+        x[0]
+    ))
 
-    with open(OUT, "w", encoding="utf-8") as f:
-        for line, ms in results:
-            f.write(rename(line, ms) + "\n")
-    print(f"done: {len(results)} lines -> {OUT}")
+    # Добавляем CIDR/SNI правила в конец
+    for line in other:
+        results.append((line, None, None))
+
+    with open(OUT_CHECKED, "w", encoding="utf-8") as f:
+        for line, cc, ms in results:
+            f.write(rename_checked(line, cc, ms) + "\n")
+    print(f"\n=== Checked: {len(results)} lines -> {OUT_CHECKED} ===")
 
 if __name__ == "__main__":
     main()
