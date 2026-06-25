@@ -8,6 +8,7 @@ on:
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     
     steps:
       - uses: actions/checkout@v3
@@ -24,7 +25,7 @@ jobs:
         run: python check_sources.py
         continue-on-error: true
       
-      - name: Merge and deduplicate proxies
+      - name: Merge, deduplicate and check live proxies
         run: python merge_proxies.py
       
       - name: Commit and push changes
@@ -34,4 +35,3 @@ jobs:
           git add proxies.txt sources_check.log
           git commit -m "Update proxies: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes"
           git push
-
