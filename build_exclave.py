@@ -9,19 +9,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # НАСТРОЙКИ
 # ============================================
 SUBSCRIPTIONS = [
-    # Твои родные
     "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-all.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
-    
-    # FastNodes
     "https://raw.githubusercontent.com/rtwo2/FastNodes/main/sub/everything.txt",
     "https://raw.githubusercontent.com/rtwo2/FastNodes/main/sub/protocols/vless.txt",
     "https://raw.githubusercontent.com/rtwo2/FastNodes/main/sub/countries/RU.txt",
-    
-    # Nexus Nodes
     "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/all.txt",
     "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/light.txt",
 ]
@@ -29,10 +24,19 @@ SUBSCRIPTIONS = [
 OUTPUT_FILE = "proxies.txt"
 REPORT_FILE = "report.txt"
 MAX_PROXIES = 600
-TIMEOUT = 3
+TCP_TIMEOUT = 3
 MAX_WORKERS = 15
 MAX_PING_MS = 300
 LIMIT_BEFORE_CHECK = 2000
+
+# Тверские сайты для ротации
+TVER_SITES = [
+    "tver.ru",
+    "tversu.ru",
+    "afanasy.biz",
+    "tvernews.ru",
+    "tver.kp.ru",
+]
 
 # ============================================
 # ФУНКЦИИ
@@ -82,12 +86,17 @@ def extract_host(proxy_link):
     return None
 
 def ping_target(host):
+    """Измеряет пинг до указанного хоста через DNS."""
     try:
         start = time.time()
         socket.gethostbyname(host)
         return (time.time() - start) * 1000
     except:
         return None
+
+def get_ping_target():
+    """Выбирает случайный тверской сайт для пинга."""
+    return random.choice(TVER_SITES)
 
 def check_proxy(proxy_link):
     proxy_link = proxy_link.strip()
@@ -101,30 +110,27 @@ def check_proxy(proxy_link):
     if not host:
         return None
     
-    # 1. Пинг до Google (глобальный, стабильный)
-    ping_google = ping_target("google.com")
-    if ping_google is None or ping_google > MAX_PING_MS:
+    # 1. Пинг до случайного тверского сайта
+    target = get_ping_target()
+    ping = ping_target(target)
+    if ping is None or ping > MAX_PING_MS:
         return None
     
-    # 2. Пинг до Твери (локальный)
-    ping_tver = ping_target("tver.ru")
-    if ping_tver is None or ping_tver > MAX_PING_MS:
-        return None
-    
-    # 3. TCP-проверка
+    # 2. TCP-проверка
     ports = [443, 80, 8080, 8443, 8880, 2096, 2377, 1935, 41930, 35401, 666, 1080]
     for port in ports:
         try:
             start = time.time()
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(TIMEOUT)
+            sock.settimeout(TCP_TIMEOUT)
             result = sock.connect_ex((host, port))
             sock.close()
             
             if result == 0:
-                ping = (time.time() - start) * 1000
-                if ping < 1000:
-                    avg_ping = (ping_google + ping_tver) / 2
+                proxy_ping = (time.time() - start) * 1000
+                if proxy_ping < 1000:
+                    # Средний пинг (тверской сайт + прокси)
+                    avg_ping = (ping + proxy_ping) / 2
                     return proxy_link, avg_ping
         except:
             pass
@@ -137,7 +143,7 @@ def check_proxy(proxy_link):
 
 def main():
     print("=" * 50)
-    print("🚀 СБОРКА REALITY-ПРОКСИ (Google + Тверь)")
+    print("🚀 СБОРКА REALITY-ПРОКСИ (РОТАЦИЯ ТВЕРСКИХ САЙТОВ)")
     print("=" * 50)
     
     print("\n📦 Шаг 1: Загрузка подписок...")
@@ -159,11 +165,11 @@ def main():
     else:
         print(f"📊 Для проверки взято: {len(reality_proxies)} (все)")
     
-    print(f"\n⏳ Проверка целевых хостов...")
-    ping_google = ping_target("google.com")
-    ping_tver = ping_target("tver.ru")
-    print(f"   📍 Google: {ping_google:.0f} мс" if ping_google else "   ❌ Google недоступен")
-    print(f"   📍 Тверь: {ping_tver:.0f} мс" if ping_tver else "   ❌ Тверь недоступна")
+    # Проверяем доступность тверских сайтов
+    print(f"\n⏳ Проверка тверских сайтов...")
+    for site in TVER_SITES:
+        ping = ping_target(site)
+        print(f"   📍 {site}: {ping:.0f} мс" if ping else f"   ❌ {site} недоступен")
     
     print(f"\n⏳ Шаг 2: Проверка REALITY-прокси ({MAX_WORKERS} потоков)...")
     working_proxies = []
@@ -180,7 +186,7 @@ def main():
                 if result:
                     proxy, avg_ping = result
                     working_proxies.append((proxy, avg_ping))
-                    print(f"   ✅ {proxy[:50]}... {avg_ping:.0f} мс (ср.)")
+                    print(f"   ✅ {proxy[:50]}... {avg_ping:.0f} мс")
             except:
                 pass
             
@@ -202,8 +208,6 @@ def main():
     
     with open(REPORT_FILE, 'w') as f:
         f.write(f"Собрано: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"Пинг до Google: {ping_google:.0f} мс\n" if ping_google else "Пинг до Google: недоступен\n")
-        f.write(f"Пинг до Твери: {ping_tver:.0f} мс\n" if ping_tver else "Пинг до Твери: недоступен\n")
         f.write(f"Всего REALITY прокси: {len(working_proxies)}\n")
         if working_proxies:
             f.write(f"Средний пинг: {sum(p for _, p in working_proxies) / len(working_proxies):.0f} мс\n")
