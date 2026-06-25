@@ -2,10 +2,11 @@ import requests
 import re
 import time
 import socket
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ============================================
-# НАСТРОЙКИ
+# НАСТРОЙКИ — ТОЛЬКО REALITY
 # ============================================
 SUBSCRIPTIONS = [
     "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
@@ -15,15 +16,15 @@ SUBSCRIPTIONS = [
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
 ]
 
-OUTPUT_FILE = "exclave_list.txt"
-MAX_PROXIES = 600
+OUTPUT_FILE = "proxies.txt"
+MAX_PROXIES = 300                # Для REALITY оставляем 300 лучших
 TIMEOUT = 3
 MAX_WORKERS = 10
-PING_TARGET = "tver.ru"          # <-- Цель для пинга
-MAX_PING_MS = 300                # <-- Максимальный пинг до tver.ru
+PING_TARGET = "tver.ru"
+MAX_PING_MS = 300
 
 # ============================================
-# ФУНКЦИИ
+# ПРОВЕРКА ПРОКСИ
 # ============================================
 
 def extract_host(proxy_link):
@@ -38,28 +39,35 @@ def extract_host(proxy_link):
         pass
     return None
 
+def is_reality(proxy_link):
+    """Проверяет, что это VLESS с REALITY."""
+    return proxy_link.startswith('vless://') and 'security=reality' in proxy_link
+
 def check_proxy(proxy_link):
-    """Проверяет прокси: пинг до tver.ru + TCP-коннект."""
     proxy_link = proxy_link.strip()
     if not proxy_link or proxy_link.startswith('#'):
+        return None
+    
+    # Пропускаем только REALITY
+    if not is_reality(proxy_link):
         return None
     
     host = extract_host(proxy_link)
     if not host:
         return None
     
-    # 1. Пинг до tver.ru
+    # Пинг до tver.ru
     try:
         start_ping = time.time()
         socket.gethostbyname(PING_TARGET)
         ping_to_tver = (time.time() - start_ping) * 1000
         if ping_to_tver > MAX_PING_MS:
-            return None  # Слишком высокий пинг до Твери
+            return None
     except:
-        pass  # Если tver.ru не отвечает, пропускаем проверку
+        pass
     
-    # 2. TCP-проверка прокси
-    ports = [443, 80, 8080, 8443, 8880, 2096, 2377, 1935, 41930, 35401]
+    # TCP-проверка
+    ports = [443, 80, 8080, 8443, 8880, 2096]
     for port in ports:
         try:
             start = time.time()
@@ -92,10 +100,10 @@ def fetch_subscriptions(urls):
             for line in lines:
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    if re.match(r'^(ss|vless|vmess|trojan|hysteria2|socks5|http)://', line):
+                    if line.startswith('vless://'):
                         all_proxies.append(line)
             
-            print(f"   ✅ Найдено {len([l for l in lines if l and not l.startswith('#')])} прокси")
+            print(f"   ✅ Найдено VLESS: {len([l for l in lines if l.startswith('vless://')])}")
         except Exception as e:
             print(f"   ❌ Ошибка: {e}")
     
@@ -103,20 +111,23 @@ def fetch_subscriptions(urls):
 
 def main():
     print("=" * 50)
-    print("🚀 СБОРКА СПИСКА ДЛЯ EXCLAVE (ТВЕРЬ)")
+    print("🚀 СБОРКА REALITY-ПРОКСИ ДЛЯ RUSSIA")
     print("=" * 50)
     
-    print("\n📦 Шаг 1: Загрузка подписок...")
+    print("\n📦 Шаг 1: Загрузка подписок (только VLESS)...")
     all_proxies = fetch_subscriptions(SUBSCRIPTIONS)
-    print(f"\n📊 Всего уникальных прокси: {len(all_proxies)}")
     
-    if len(all_proxies) == 0:
-        print("❌ Нет прокси для проверки!")
+    # Сразу фильтруем REALITY
+    reality_proxies = [p for p in all_proxies if is_reality(p)]
+    print(f"\n📊 Найдено VLESS: {len(all_proxies)}")
+    print(f"📊 Из них REALITY: {len(reality_proxies)}")
+    
+    if len(reality_proxies) == 0:
+        print("❌ Нет REALITY-прокси для проверки!")
         with open(OUTPUT_FILE, 'w') as f:
-            f.write("# Нет доступных прокси\n")
+            f.write("# Нет REALITY-прокси\n")
         return
     
-    # Проверяем пинг до tver.ru
     print(f"\n⏳ Пинг до {PING_TARGET}...")
     try:
         start = time.time()
@@ -124,54 +135,56 @@ def main():
         ping = (time.time() - start) * 1000
         print(f"   ✅ Пинг до {PING_TARGET}: {ping:.0f} мс")
     except:
-        print(f"   ⚠️ Не удалось пропинговать {PING_TARGET}, продолжаем...")
+        print(f"   ⚠️ Не удалось пропинговать {PING_TARGET}")
+        ping = 0
     
-    print(f"\n⏳ Шаг 2: Проверка прокси ({MAX_WORKERS} потоков)...")
+    print(f"\n⏳ Шаг 2: Проверка REALITY-прокси ({MAX_WORKERS} потоков)...")
     working_proxies = []
     checked = 0
-    total = len(all_proxies)
+    total = len(reality_proxies)
     
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(check_proxy, proxy): proxy for proxy in all_proxies}
+        futures = {executor.submit(check_proxy, proxy): proxy for proxy in reality_proxies}
         
         for future in as_completed(futures):
             checked += 1
             try:
                 result = future.result(timeout=10)
                 if result:
-                    proxy, ping = result
-                    working_proxies.append((proxy, ping))
-                    print(f"   ✅ {proxy[:50]}... {ping:.0f} мс")
+                    proxy, proxy_ping = result
+                    working_proxies.append((proxy, proxy_ping))
+                    print(f"   ✅ {proxy[:50]}... {proxy_ping:.0f} мс")
             except:
                 pass
             
-            if checked % 20 == 0:
+            if checked % 10 == 0:
                 print(f"   ⏳ Проверено {checked}/{total}...")
     
     working_proxies.sort(key=lambda x: x[1])
     if len(working_proxies) > MAX_PROXIES:
         working_proxies = working_proxies[:MAX_PROXIES]
     
-    print(f"\n🎯 Рабочих прокси: {len(working_proxies)}")
+    print(f"\n🎯 Рабочих REALITY-прокси: {len(working_proxies)}")
     
     with open(OUTPUT_FILE, 'w') as f:
         if working_proxies:
             for proxy, _ in working_proxies:
                 f.write(f"{proxy}\n")
         else:
-            f.write("# Нет рабочих прокси\n")
+            f.write("# Нет рабочих REALITY-прокси\n")
     
+    # Сохраняем отчёт
     with open("report.txt", 'w') as f:
         f.write(f"Собрано: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"Пинг до {PING_TARGET}: {ping:.0f} мс\n")
-        f.write(f"Всего прокси: {len(working_proxies)}\n")
+        f.write(f"Всего REALITY прокси: {len(working_proxies)}\n")
         if working_proxies:
             f.write(f"Средний пинг: {sum(p for _, p in working_proxies) / len(working_proxies):.0f} мс\n")
         f.write("\nТоп-10:\n")
-        for proxy, ping in working_proxies[:10]:
-            f.write(f"  {ping:.0f} мс | {proxy[:80]}...\n")
+        for proxy, proxy_ping in working_proxies[:10]:
+            f.write(f"  {proxy_ping:.0f} мс | {proxy[:80]}...\n")
     
-    print(f"\n✅ Готово! Список сохранён в {OUTPUT_FILE}")
+    print(f"\n✅ Готово! Список REALITY-прокси сохранён в {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     main()
