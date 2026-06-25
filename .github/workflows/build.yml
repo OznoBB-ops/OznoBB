@@ -1,4 +1,4 @@
-name: Build Proxy List
+name: Build Reality Proxy List
 
 on:
   schedule:
@@ -37,7 +37,7 @@ jobs:
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
-          git commit -m "Auto-update proxies $(date -u '+%Y-%m-%d %H:%M:%S')"
+          git commit -m "Auto-update REALITY proxies $(date -u '+%Y-%m-%d %H:%M:%S')"
           git push
         fi
       env:
