@@ -2,7 +2,6 @@ import requests
 import re
 import time
 import socket
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ============================================
@@ -16,8 +15,9 @@ SUBSCRIPTIONS = [
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
 ]
 
-OUTPUT_FILE = "proxies.txt"
-MAX_PROXIES = 300                # Для REALITY оставляем 300 лучших
+OUTPUT_FILE = "proxies.txt"              # В КОРЕНЬ
+REPORT_FILE = "report.txt"               # В КОРЕНЬ
+MAX_PROXIES = 300
 TIMEOUT = 3
 MAX_WORKERS = 10
 PING_TARGET = "tver.ru"
@@ -40,7 +40,6 @@ def extract_host(proxy_link):
     return None
 
 def is_reality(proxy_link):
-    """Проверяет, что это VLESS с REALITY."""
     return proxy_link.startswith('vless://') and 'security=reality' in proxy_link
 
 def check_proxy(proxy_link):
@@ -48,7 +47,6 @@ def check_proxy(proxy_link):
     if not proxy_link or proxy_link.startswith('#'):
         return None
     
-    # Пропускаем только REALITY
     if not is_reality(proxy_link):
         return None
     
@@ -56,7 +54,6 @@ def check_proxy(proxy_link):
     if not host:
         return None
     
-    # Пинг до tver.ru
     try:
         start_ping = time.time()
         socket.gethostbyname(PING_TARGET)
@@ -66,7 +63,6 @@ def check_proxy(proxy_link):
     except:
         pass
     
-    # TCP-проверка
     ports = [443, 80, 8080, 8443, 8880, 2096]
     for port in ports:
         try:
@@ -117,7 +113,6 @@ def main():
     print("\n📦 Шаг 1: Загрузка подписок (только VLESS)...")
     all_proxies = fetch_subscriptions(SUBSCRIPTIONS)
     
-    # Сразу фильтруем REALITY
     reality_proxies = [p for p in all_proxies if is_reality(p)]
     print(f"\n📊 Найдено VLESS: {len(all_proxies)}")
     print(f"📊 Из них REALITY: {len(reality_proxies)}")
@@ -173,8 +168,7 @@ def main():
         else:
             f.write("# Нет рабочих REALITY-прокси\n")
     
-    # Сохраняем отчёт
-    with open("report.txt", 'w') as f:
+    with open(REPORT_FILE, 'w') as f:
         f.write(f"Собрано: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"Пинг до {PING_TARGET}: {ping:.0f} мс\n")
         f.write(f"Всего REALITY прокси: {len(working_proxies)}\n")
