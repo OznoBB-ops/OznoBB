@@ -2,13 +2,14 @@ import requests
 import re
 import time
 import socket
+import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ============================================
-# НАСТРОЙКИ — ТОЛЬКО REALITY
+# НАСТРОЙКИ
 # ============================================
 SUBSCRIPTIONS = [
-    # Твои родные подписки
+    # Твои родные
     "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt",
@@ -23,36 +24,6 @@ SUBSCRIPTIONS = [
     # Nexus Nodes
     "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/all.txt",
     "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/light.txt",
-    
-    # Hidashimora (28 списков)
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/1.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/2.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/3.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/4.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/5.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/6.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/7.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/8.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/9.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/10.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/11.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/12.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/13.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/14.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/15.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/16.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/17.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/18.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/19.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/20.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/21.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/22.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/23.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/24.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/25.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/26.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/27.1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/28.1.txt",
 ]
 
 OUTPUT_FILE = "proxies.txt"
@@ -60,22 +31,17 @@ REPORT_FILE = "report.txt"
 MAX_PROXIES = 600
 TIMEOUT = 3
 MAX_WORKERS = 15
-
-# ЖЁСТКИЕ ЛИМИТЫ
-PING_TARGETS = ["ya.ru", "tver.ru"]
 MAX_PING_MS = 300
 
+# ⚠️ ГЛАВНОЕ: сколько прокси брать ДО проверки
+LIMIT_BEFORE_CHECK = 2000  # Берём только 2000 случайных REALITY-прокси
+
 # ============================================
-# ФУНКЦИЯ ПРОВЕРКИ REALITY
+# ФУНКЦИИ
 # ============================================
 
 def is_reality(proxy_link):
-    """Проверяет, что это VLESS с REALITY."""
     return proxy_link.startswith('vless://') and 'security=reality' in proxy_link
-
-# ============================================
-# ЗАГРУЗКА ПОДПИСОК И УДАЛЕНИЕ ДУБЛЕЙ
-# ============================================
 
 def fetch_subscriptions(urls):
     raw_proxies = []
@@ -92,7 +58,6 @@ def fetch_subscriptions(urls):
             for line in lines:
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    # Сохраняем ВСЕ строки, потом отфильтруем REALITY
                     if re.match(r'^(ss|vless|vmess|trojan|hysteria2|socks5|http)://', line):
                         raw_proxies.append(line)
             
@@ -100,16 +65,11 @@ def fetch_subscriptions(urls):
         except Exception as e:
             print(f"   ❌ Ошибка: {e}")
     
-    # Удаляем дубли
     unique_proxies = list(set(raw_proxies))
     print(f"\n📊 Удалено дублей: {len(raw_proxies) - len(unique_proxies)}")
     print(f"📊 Уникальных прокси: {len(unique_proxies)}")
     
     return unique_proxies
-
-# ============================================
-# ПРОВЕРКА ПРОКСИ (ДВОЙНОЙ ПИНГ)
-# ============================================
 
 def extract_host(proxy_link):
     try:
@@ -136,7 +96,6 @@ def check_proxy(proxy_link):
     if not proxy_link or proxy_link.startswith('#'):
         return None
     
-    # ТОЛЬКО REALITY
     if not is_reality(proxy_link):
         return None
     
@@ -144,17 +103,14 @@ def check_proxy(proxy_link):
     if not host:
         return None
     
-    # 1. Пинг до Яндекса
     ping_yandex = ping_target("ya.ru")
     if ping_yandex is None or ping_yandex > MAX_PING_MS:
         return None
     
-    # 2. Пинг до Твери
     ping_tver = ping_target("tver.ru")
     if ping_tver is None or ping_tver > MAX_PING_MS:
         return None
     
-    # 3. TCP-проверка
     ports = [443, 80, 8080, 8443, 8880, 2096, 2377, 1935, 41930, 35401, 666, 1080]
     for port in ports:
         try:
@@ -180,23 +136,30 @@ def check_proxy(proxy_link):
 
 def main():
     print("=" * 50)
-    print("🚀 СБОРКА REALITY-ПРОКСИ (ДВОЙНОЙ ПИНГ)")
+    print("🚀 СБОРКА REALITY-ПРОКСИ (С ЛИМИТОМ)")
     print("=" * 50)
     
     print("\n📦 Шаг 1: Загрузка подписок...")
     all_proxies = fetch_subscriptions(SUBSCRIPTIONS)
     
-    # Считаем REALITY
-    reality_count = sum(1 for p in all_proxies if is_reality(p))
-    print(f"📊 Из них REALITY: {reality_count}")
+    # Отбираем только REALITY
+    reality_proxies = [p for p in all_proxies if is_reality(p)]
+    print(f"\n📊 Найдено VLESS: {len(all_proxies)}")
+    print(f"📊 Из них REALITY: {len(reality_proxies)}")
     
-    if len(all_proxies) == 0 or reality_count == 0:
-        print("❌ Нет REALITY-прокси для проверки!")
+    if len(reality_proxies) == 0:
+        print("❌ Нет REALITY-прокси!")
         with open(OUTPUT_FILE, 'w') as f:
             f.write("# Нет REALITY-прокси\n")
         return
     
-    # Проверяем доступность Яндекса и Твери
+    # ⚠️ БЕРЁМ ТОЛЬКО ПЕРВЫЕ 2000 (СЛУЧАЙНЫХ)
+    if len(reality_proxies) > LIMIT_BEFORE_CHECK:
+        reality_proxies = random.sample(reality_proxies, LIMIT_BEFORE_CHECK)
+        print(f"📊 Для проверки взято: {LIMIT_BEFORE_CHECK} (случайных)")
+    else:
+        print(f"📊 Для проверки взято: {len(reality_proxies)} (все)")
+    
     print(f"\n⏳ Проверка целевых хостов...")
     ping_ya = ping_target("ya.ru")
     ping_tv = ping_target("tver.ru")
@@ -206,10 +169,10 @@ def main():
     print(f"\n⏳ Шаг 2: Проверка REALITY-прокси ({MAX_WORKERS} потоков)...")
     working_proxies = []
     checked = 0
-    total = len(all_proxies)
+    total = len(reality_proxies)
     
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(check_proxy, proxy): proxy for proxy in all_proxies}
+        futures = {executor.submit(check_proxy, proxy): proxy for proxy in reality_proxies}
         
         for future in as_completed(futures):
             checked += 1
