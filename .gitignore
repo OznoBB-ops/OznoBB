@@ -135,6 +135,32 @@ celerybeat.pid
 *.rdb
 *.aof
 *.pid
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Но НЕ игнорируй эти файлы
+!proxies.txt
+!sources_check.log
+!requirements.txt
+!merge_proxies.py
+!check_sources.py
 
 # RabbitMQ
 mnesia/
