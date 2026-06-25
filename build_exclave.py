@@ -32,9 +32,7 @@ MAX_PROXIES = 600
 TIMEOUT = 3
 MAX_WORKERS = 15
 MAX_PING_MS = 300
-
-# ⚠️ ГЛАВНОЕ: сколько прокси брать ДО проверки
-LIMIT_BEFORE_CHECK = 2000  # Берём только 2000 случайных REALITY-прокси
+LIMIT_BEFORE_CHECK = 2000
 
 # ============================================
 # ФУНКЦИИ
@@ -103,14 +101,17 @@ def check_proxy(proxy_link):
     if not host:
         return None
     
-    ping_yandex = ping_target("ya.ru")
-    if ping_yandex is None or ping_yandex > MAX_PING_MS:
+    # 1. Пинг до Google (глобальный, стабильный)
+    ping_google = ping_target("google.com")
+    if ping_google is None or ping_google > MAX_PING_MS:
         return None
     
+    # 2. Пинг до Твери (локальный)
     ping_tver = ping_target("tver.ru")
     if ping_tver is None or ping_tver > MAX_PING_MS:
         return None
     
+    # 3. TCP-проверка
     ports = [443, 80, 8080, 8443, 8880, 2096, 2377, 1935, 41930, 35401, 666, 1080]
     for port in ports:
         try:
@@ -123,7 +124,7 @@ def check_proxy(proxy_link):
             if result == 0:
                 ping = (time.time() - start) * 1000
                 if ping < 1000:
-                    avg_ping = (ping_yandex + ping_tver) / 2
+                    avg_ping = (ping_google + ping_tver) / 2
                     return proxy_link, avg_ping
         except:
             pass
@@ -136,13 +137,12 @@ def check_proxy(proxy_link):
 
 def main():
     print("=" * 50)
-    print("🚀 СБОРКА REALITY-ПРОКСИ (С ЛИМИТОМ)")
+    print("🚀 СБОРКА REALITY-ПРОКСИ (Google + Тверь)")
     print("=" * 50)
     
     print("\n📦 Шаг 1: Загрузка подписок...")
     all_proxies = fetch_subscriptions(SUBSCRIPTIONS)
     
-    # Отбираем только REALITY
     reality_proxies = [p for p in all_proxies if is_reality(p)]
     print(f"\n📊 Найдено VLESS: {len(all_proxies)}")
     print(f"📊 Из них REALITY: {len(reality_proxies)}")
@@ -153,7 +153,6 @@ def main():
             f.write("# Нет REALITY-прокси\n")
         return
     
-    # ⚠️ БЕРЁМ ТОЛЬКО ПЕРВЫЕ 2000 (СЛУЧАЙНЫХ)
     if len(reality_proxies) > LIMIT_BEFORE_CHECK:
         reality_proxies = random.sample(reality_proxies, LIMIT_BEFORE_CHECK)
         print(f"📊 Для проверки взято: {LIMIT_BEFORE_CHECK} (случайных)")
@@ -161,10 +160,10 @@ def main():
         print(f"📊 Для проверки взято: {len(reality_proxies)} (все)")
     
     print(f"\n⏳ Проверка целевых хостов...")
-    ping_ya = ping_target("ya.ru")
-    ping_tv = ping_target("tver.ru")
-    print(f"   📍 Яндекс: {ping_ya:.0f} мс" if ping_ya else "   ❌ Яндекс недоступен")
-    print(f"   📍 Тверь: {ping_tv:.0f} мс" if ping_tv else "   ❌ Тверь недоступна")
+    ping_google = ping_target("google.com")
+    ping_tver = ping_target("tver.ru")
+    print(f"   📍 Google: {ping_google:.0f} мс" if ping_google else "   ❌ Google недоступен")
+    print(f"   📍 Тверь: {ping_tver:.0f} мс" if ping_tver else "   ❌ Тверь недоступна")
     
     print(f"\n⏳ Шаг 2: Проверка REALITY-прокси ({MAX_WORKERS} потоков)...")
     working_proxies = []
@@ -203,8 +202,8 @@ def main():
     
     with open(REPORT_FILE, 'w') as f:
         f.write(f"Собрано: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"Пинг до Яндекса: {ping_ya:.0f} мс\n" if ping_ya else "Пинг до Яндекса: недоступен\n")
-        f.write(f"Пинг до Твери: {ping_tv:.0f} мс\n" if ping_tv else "Пинг до Твери: недоступен\n")
+        f.write(f"Пинг до Google: {ping_google:.0f} мс\n" if ping_google else "Пинг до Google: недоступен\n")
+        f.write(f"Пинг до Твери: {ping_tver:.0f} мс\n" if ping_tver else "Пинг до Твери: недоступен\n")
         f.write(f"Всего REALITY прокси: {len(working_proxies)}\n")
         if working_proxies:
             f.write(f"Средний пинг: {sum(p for _, p in working_proxies) / len(working_proxies):.0f} мс\n")
