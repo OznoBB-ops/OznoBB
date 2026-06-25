@@ -14,47 +14,42 @@ URLS = [
 
 OUTPUT_FILE = "proxies.txt"
 
-TCP_TIMEOUT = 3
-CONCURRENCY = 50
-PORTS = [443, 80, 8080, 8443, 8880, 2096, 2377, 1935, 41930, 35401, 666, 1080]
+TCP_TIMEOUT = 2.5
+CONCURRENCY = 60
 
-SCHEMES = (
-    "vless", "vmess", "trojan", "ss", "ssr", "https", "http"
-)
+# Если в ссылке порт не удалось вытащить — пробуем эти
+FALLBACK_PORTS = [443, 80, 8080, 8443, 8880, 2096, 2377, 1935, 41930, 35401, 666, 1080]
 
-# --------- Парсинг host/port ---------
+SCHEMES = ("vless://", "vmess://", "trojan://", "ss://", "ssr://", "http://", "https://")
 
-def is_probably_link(line: str) -> bool:
-    s = line.strip().lower()
-    if not s:
-        return False
-    return any(s.startswith(f"{scheme}://") for scheme in SCHEMES) or s.startswith("ss://") or s.startswith("trojan://") or s.startswith("vless://")
+def looks_like_link(s: str) -> bool:
+    t = s.strip()
+    return any(t.lower().startswith(x) for x in SCHEMES)
 
 def extract_host_port(line: str):
     s = line.strip()
 
-    # Попытка через urlparse (обычно работает для vless/trojan)
-    parsed = urlparse(s)
-    host = parsed.hostname
-    port = parsed.port
-    if host and port:
-        return host, port
-
-    # vless/trojan часто: scheme://...@host:port
-    m = re.search(r"@(.+?):(\d+)", s)
+    # vless/trojan обычно: ...@host:port (часто)
+    m = re.search(r'@(.+?):(\d+)', s)
     if m:
         return m.group(1), int(m.group(2))
 
-    # Иногда: host:port в конце (грубая эвристика)
-    m2 = re.search(r"(\b[\w\.-]+\b):(\d{2,5})", s)
+    # попробовать urlparse
+    try:
+        p = urlparse(s)
+        if p.hostname and p.port:
+            return p.hostname, p.port
+    except Exception:
+        pass
+
+    # host:port на конце (грубая эвристика)
+    m2 = re.search(r'(^|[^\w-])([A-Za-z0-9][A-Za-z0-9\.\-]*):(\d{2,5})(?!\d)', s)
     if m2:
-        p = int(m2.group(2))
-        if 1 <= p <= 65535:
-            return m2.group(1), p
+        port = int(m2.group(3))
+        if 1 <= port <= 65535:
+            return m2.group(2), port
 
     return None, None
-
-# --------- Проверка TCP ---------
 
 async def tcp_probe(host: str, port: int, timeout: float) -> float | None:
     start = time.perf_counter()
@@ -69,84 +64,73 @@ async def tcp_probe(host: str, port: int, timeout: float) -> float | None:
     except Exception:
         return None
 
-async def check_proxy(line: str, sem: asyncio.Semaphore) -> tuple | None:
+async def check_line(line: str, sem: asyncio.Semaphore):
     async with sem:
-        if not is_probably_link(line):
+        if not looks_like_link(line):
             return None
 
         host, port = extract_host_port(line)
         if not host:
             return None
 
-        # Если порт удалось извлечь — проверяем его.
-        # Иначе пробуем набор портов.
-        ports_to_try = [port] if port else PORTS
+        ports = [port] if port else FALLBACK_PORTS
 
         best = None
-        for p in ports_to_try:
-            ping = await tcp_probe(host, p, TCP_TIMEOUT)
-            if ping is not None and (best is None or ping < best):
-                best = ping
+        for p in ports:
+            t = await tcp_probe(host, p, TCP_TIMEOUT)
+            if t is not None and (best is None or t < best):
+                best = t
 
+        # порог “живой”
         if best is not None and best < 1000:
-            return line, best
+            return (line, best)
         return None
 
-# --------- Загрузка ---------
-
-async def fetch_text(session: aiohttp.ClientSession, url: str) -> str:
+async def fetch_text(session, url: str) -> str:
     async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as r:
         r.raise_for_status()
         return await r.text(errors="ignore")
 
-def extract_links(text: str):
-    links = []
+def extract_candidates(text: str):
+    out = []
     for ln in text.splitlines():
         s = ln.strip()
         if not s or s.startswith("#"):
             continue
-        if is_probably_link(s):
-            links.append(s)
-    return links
-
-# --------- main ---------
+        if looks_like_link(s):
+            out.append(s)
+    return out
 
 async def main():
-    print("=" * 50)
-    print("🚀 СБОРКА PROXIES (все типы по ссылкам) + TCP check")
-    print("=" * 50)
-
     async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
-        tasks = [fetch_text(session, u) for u in URLS]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        res = await asyncio.gather(*[fetch_text(session, u) for u in URLS], return_exceptions=True)
 
-    raw_links = []
-    for u, r in zip(URLS, results):
+    candidates = []
+    for u, r in zip(URLS, res):
         if isinstance(r, Exception):
-            print("Ошибка загрузки:", u, r)
+            print(f"Ошибка загрузки: {u}: {r}")
             continue
-        links = extract_links(r)
-        print(f"Загружено: {u} | links={len(links)}")
-        raw_links.extend(links)
+        links = extract_candidates(r)
+        print(f"Загружено {len(links)} ссылок из {u}")
+        candidates.extend(links)
 
-    # чистим/уникализируем
-    cleaned = []
-    for x in raw_links:
-        s = x.strip()
-        if s:
-            cleaned.append(s)
+    # уникализация (с сохранением порядка)
+    seen = set()
+    unique = []
+    for x in candidates:
+        if x not in seen:
+            seen.add(x)
+            unique.append(x)
 
-    unique = list(dict.fromkeys(cleaned))  # порядок сохранится
-    print(f"\nИтого строк ссылок: {len(unique)}")
+    print(f"\nВсего кандидатов: {len(unique)}")
 
     if not unique:
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-            f.write("# Нет ссылок\n")
+            f.write("# Нет данных\n")
         return
 
-    print(f"\n⏳ Проверка TCP ({CONCURRENCY} задач одновременно) ...")
     sem = asyncio.Semaphore(CONCURRENCY)
-    tasks = [check_proxy(line, sem) for line in unique]
+    tasks = [check_line(x, sem) for x in unique]
 
     working = []
     checked = 0
@@ -154,29 +138,24 @@ async def main():
 
     for coro in asyncio.as_completed(tasks):
         checked += 1
-        try:
-            res = await coro
-            if res:
-                line, ping = res
-                working.append((line, ping))
-                print(f"✅ {checked}/{total} найдено={len(working)} {ping:.0f}ms")
-            elif checked % 50 == 0:
-                print(f"Проверено {checked}/{total} найдено={len(working)}")
-        except Exception:
-            pass
+        res = await coro
+        if res:
+            working.append(res)
+        if checked % 50 == 0:
+            print(f"Проверено {checked}/{total} | живых найдено {len(working)}")
 
-    working.sort(key=lambda x: x[1])
+    working.sort(key=lambda t: t[1])
 
-    print(f"\n🎯 Рабочих: {len(working)}")
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         if working:
-            for line, ping in working:
+            for line, ms in working:
                 f.write(line + "\n")
         else:
             f.write("# Нет рабочих прокси\n")
 
+    print(f"\nЖивых прокси: {len(working)} -> {OUTPUT_FILE}")
     if working:
-        print("Пример (топ1):", working[0][0][:90], f"({working[0][1]:.0f}ms)")
+        print("Топ-1:", working[0][0][:90], f"({working[0][1]:.0f}ms)")
 
 if __name__ == "__main__":
     asyncio.run(main())
