@@ -1,0 +1,195 @@
+{
+  "log": {
+    "level": "info"
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-remote",
+        "address": "https://dns.google/dns-query"
+      },
+      {
+        "tag": "dns-local",
+        "address": "223.5.5.5",
+        "detour": "direct"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": [
+          ".ru",
+          ".su",
+          ".рф"
+        ],
+        "server": "dns-local"
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "listen": "127.0.0.1",
+      "listen_port": 7890,
+      "set_system_proxy": false
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "selector",
+      "tag": "PROXY",
+      "outbounds": [
+        "auto",
+        "direct"
+      ]
+    },
+    {
+      "type": "urltest",
+      "tag": "auto",
+      "outbounds": [
+        "merged-sub"
+      ],
+      "url": "http://cp.cloudflare.com/generate_204",
+      "interval": "5m",
+      "tolerance": 50
+    },
+    {
+      "type": "selector",
+      "tag": "TORRENT",
+      "outbounds": [
+        "auto-torrent",
+        "direct"
+      ]
+    },
+    {
+      "type": "urltest",
+      "tag": "auto-torrent",
+      "outbounds": [
+        "merged-sub"
+      ],
+      "url": "http://cp.cloudflare.com/generate_204",
+      "interval": "5m",
+      "tolerance": 100
+    },
+    {
+      "type": "selector",
+      "tag": "TELEGRAM",
+      "outbounds": [
+        "auto",
+        "direct"
+      ]
+    },
+    {
+      "type": "selector",
+      "tag": "PERSONAL24",
+      "outbounds": [
+        "auto",
+        "direct"
+      ]
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    },
+    {
+      "type": "dns",
+      "tag": "dns-out"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "rule_set": [
+          "torrent-clients",
+          "torrent-trackers"
+        ],
+        "outbound": "TORRENT"
+      },
+      {
+        "rule_set": [
+          "telegram"
+        ],
+        "outbound": "TELEGRAM"
+      },
+      {
+        "rule_set": [
+          "personal24"
+        ],
+        "outbound": "PERSONAL24"
+      },
+      {
+        "rule_set": [
+          "ru-bundle",
+          "ru-custom"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "skrepysh-proxy"
+        ],
+        "outbound": "PROXY"
+      },
+      {
+        "protocol": "dns",
+        "outbound": "dns-out"
+      }
+    ],
+    "rule_set": [
+      {
+        "tag": "ru-bundle",
+        "type": "remote",
+        "format": "yaml",
+        "url": "https://github.com/legiz-ru/mihomo-rule-sets/raw/main/ru-bundle/rule.yaml",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "ru-custom",
+        "type": "remote",
+        "format": "yaml",
+        "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/main/ru-custom/rule.yaml",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "torrent-clients",
+        "type": "remote",
+        "format": "yaml",
+        "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/refs/heads/main/other/torrent-clients.yaml",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "torrent-trackers",
+        "type": "remote",
+        "format": "mrs",
+        "url": "https://github.com/legiz-ru/mihomo-rule-sets/raw/main/other/torrent-trackers.mrs",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "telegram",
+        "type": "remote",
+        "format": "yaml",
+        "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/main/telegram/rule.yaml",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "personal24",
+        "type": "remote",
+        "format": "yaml",
+        "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/main/personal-24/rule.yaml",
+        "update_interval": "24h"
+      },
+      {
+        "tag": "skrepysh-proxy",
+        "type": "remote",
+        "format": "yaml",
+        "url": "https://github.com/Skrepysh/mihomo-rulesets/raw/refs/heads/main/skrepysh-rulesets/skrepysh-proxy.yaml",
+        "update_interval": "24h"
+      }
+    ],
+    "auto_detect_interface": true,
+    "final": "PROXY"
+  }
+}
