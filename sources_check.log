@@ -8,3 +8,13 @@
 
 Results: 5 available, 0 unavailable
 
+[2026-06-25T21:51:37.216929] Checking source availability...
+
+✓ https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt (OK)
+✓ https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt (OK)
+✓ https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt (OK)
+✓ https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-all.txt (OK)
+✓ https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt (OK)
+
+Results: 5 available, 0 unavailable
+
