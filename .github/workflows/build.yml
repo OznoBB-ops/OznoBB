@@ -1,4 +1,4 @@
-name: Build Clash & Sing-box & Exclave Configs
+name: Build All Configs (Clash + Sing-box + Xray)
 
 on:
   schedule:
@@ -26,18 +26,22 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r clash/requirements.txt
         pip install -r singbox/requirements.txt
+        pip install -r xray/requirements.txt   # ← ДОБАВИТЬ
         
-    - name: Run Clash build script
+    - name: Run Clash build
       run: python clash/build_clash.py
       
-    - name: Run Sing-box build script
+    - name: Run Sing-box build
       run: python singbox/build_singbox.py
+      
+    - name: Run Xray build                      # ← ДОБАВИТЬ ЭТОТ БЛОК
+      run: python xray/build_xray.py
       
     - name: Commit and push
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add clash/output/ singbox/output/ || true
+        git add clash/output/ singbox/output/ xray/output/ || true   # ← ДОБАВИТЬ xray/output/
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
