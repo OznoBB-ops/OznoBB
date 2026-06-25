@@ -1,205 +1,164 @@
-import asyncio
-import aiohttp
-import os
-import random
+import requests
 import re
 import time
-from urllib.parse import urlparse, parse_qs
+import socket
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ============================================
-# ИСТОЧНИКИ (10 штук)
+# ТВОИ ИСТОЧНИКИ (только твои)
 # ============================================
-URLS = [
+SUBSCRIPTIONS = [
     "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-all.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
-    "https://raw.githubusercontent.com/rtwo2/FastNodes/main/sub/everything.txt",
-    "https://raw.githubusercontent.com/rtwo2/FastNodes/main/sub/protocols/vless.txt",
-    "https://raw.githubusercontent.com/rtwo2/FastNodes/main/sub/countries/RU.txt",
-    "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/all.txt",
-    "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/light.txt",
 ]
 
 # ============================================
 # УСЛОВИЯ
 # ============================================
-LIMIT_MAX = 600
-LIMIT_MIN = 500
-SAMPLE_CANDIDATES = 8000
-THREADS = 15
-TIMEOUT = 3.0  # 3 секунды на TCP-connect
-CONCURRENCY_SEM = THREADS
-
-# ============================================
-# РЕГУЛЯРКИ
-# ============================================
-REALITY_RE = re.compile(r"(?i)^vless://\S+")
-SECURITY_RE = re.compile(r"(?i)(?:^|\?|&)security=reality(?:&|$)")
+OUTPUT_FILE = "proxies.txt"
+TCP_TIMEOUT = 3
+MAX_WORKERS = 15
+PORTS = [443, 80, 8080, 8443, 8880, 2096, 2377, 1935, 41930, 35401, 666, 1080]
 
 # ============================================
 # ФУНКЦИИ
 # ============================================
 
-def extract_reality_vless_lines(text: str) -> list[str]:
-    """Извлекает только VLESS + REALITY."""
-    out = []
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        if not REALITY_RE.match(line):
-            continue
-        if not SECURITY_RE.search(line):
-            continue
-        out.append(line)
-    return out
+def is_reality(proxy_link):
+    """Только VLESS + REALITY."""
+    return proxy_link.startswith('vless://') and 'security=reality' in proxy_link
 
-def parse_host_port(line: str):
+def fetch_subscriptions(urls):
+    """Скачивает все подписки, возвращает список уникальных прокси."""
+    raw = []
+    session = requests.Session()
+    session.headers.update({'User-Agent': 'Mozilla/5.0'})
+    
+    for url in urls:
+        try:
+            print(f"📥 Загрузка: {url}")
+            r = session.get(url, timeout=30)
+            r.raise_for_status()
+            for line in r.text.split('\n'):
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    if re.match(r'^(ss|vless|vmess|trojan|hysteria2|socks5|http)://', line):
+                        raw.append(line)
+            print(f"   ✅ Добавлено")
+        except Exception as e:
+            print(f"   ❌ Ошибка: {e}")
+    
+    # Убираем дубли
+    unique = list(set(raw))
+    print(f"\n📊 Уникальных прокси: {len(unique)} (дублей удалено: {len(raw) - len(unique)})")
+    return unique
+
+def extract_host_port(proxy_link):
     """Извлекает host и port из VLESS-ссылки."""
-    u = urlparse(line)
-    host = u.hostname
-    port = u.port
-
-    if host and port:
-        return host, port
-
-    # fallback: если urlparse не вытянул порт
-    m = re.search(r"(?i)^vless://[^@/]*@?([^:/\s]+):(\d+)", line)
-    if m:
-        return m.group(1), int(m.group(2))
-
+    try:
+        match = re.search(r'@([^:]+):(\d+)', proxy_link)
+        if match:
+            return match.group(1), int(match.group(2))
+        match = re.search(r'://([^:/]+):(\d+)', proxy_link)
+        if match:
+            return match.group(1), int(match.group(2))
+    except:
+        pass
     return None, None
 
-async def tcp_probe(host: str, port: int, timeout: float) -> float | None:
-    """Проверяет TCP-порт с таймаутом 3 секунды."""
-    start = time.perf_counter()
-    try:
-        fut = asyncio.open_connection(host, port)
-        reader, writer = await asyncio.wait_for(fut, timeout=timeout)
-        writer.close()
-        try:
-            await writer.wait_closed()
-        except Exception:
-            pass
-        dt = time.perf_counter() - start
-        return dt
-    except Exception:
+def check_proxy(proxy_link):
+    """Проверяет прокси через TCP-коннект."""
+    proxy_link = proxy_link.strip()
+    if not proxy_link or proxy_link.startswith('#'):
         return None
-
-async def fetch_text(session, url: str) -> str:
-    """Скачивает подписку."""
-    async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as r:
-        r.raise_for_status()
-        return await r.text(errors="ignore")
+    
+    if not is_reality(proxy_link):
+        return None
+    
+    host, port = extract_host_port(proxy_link)
+    if not host or not port:
+        return None
+    
+    best_ping = None
+    for p in PORTS:
+        try:
+            start = time.time()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(TCP_TIMEOUT)
+            result = sock.connect_ex((host, p))
+            sock.close()
+            
+            if result == 0:
+                ping = (time.time() - start) * 1000
+                if ping < 1000:
+                    if best_ping is None or ping < best_ping:
+                        best_ping = ping
+        except:
+            pass
+    
+    if best_ping is not None:
+        return proxy_link, best_ping
+    return None
 
 # ============================================
 # ОСНОВНАЯ ФУНКЦИЯ
 # ============================================
 
-async def main():
+def main():
     print("=" * 50)
-    print("🚀 СБОРКА REALITY-ПРОКСИ (ASYNC)")
+    print("🚀 СБОРКА REALITY-ПРОКСИ (БЕЗ ЛИМИТА)")
     print("=" * 50)
-
-    # 1. Скачиваем источники
+    
     print("\n📦 Шаг 1: Загрузка подписок...")
-    async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
-        pages = await asyncio.gather(
-            *[fetch_text(session, u) for u in URLS],
-            return_exceptions=True
-        )
-
-    # 2. Извлекаем REALITY
-    all_lines = []
-    for p in pages:
-        if isinstance(p, Exception):
-            print(f"   ❌ Ошибка: {p}")
-            continue
-        all_lines.extend(extract_reality_vless_lines(p))
+    all_proxies = fetch_subscriptions(SUBSCRIPTIONS)
     
-    print(f"📊 Найдено VLESS+REALITY: {len(all_lines)}")
-
-    # 3. Дедуп
-    all_lines = list(dict.fromkeys(all_lines))
-    print(f"📊 Уникальных: {len(all_lines)}")
-
-    # 4. Кандидаты с host:port
-    candidates = []
-    for line in all_lines:
-        host, port = parse_host_port(line)
-        if host and port and 1 <= port <= 65535:
-            candidates.append((host, port, line))
+    reality = [p for p in all_proxies if is_reality(p)]
+    print(f"📊 Из них REALITY: {len(reality)}")
     
-    print(f"📊 Кандидатов с host:port: {len(candidates)}")
-
-    if not candidates:
-        print("❌ Нет кандидатов!")
-        out_path = os.path.join(os.path.dirname(__file__), "proxies.txt")
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write("# Нет кандидатов\n")
+    if not reality:
+        print("❌ Нет REALITY-прокси!")
+        with open(OUTPUT_FILE, 'w') as f:
+            f.write("# Нет REALITY-прокси\n")
         return
-
-    # 5. Случайная выборка до проверки
-    if len(candidates) > SAMPLE_CANDIDATES:
-        candidates = random.sample(candidates, SAMPLE_CANDIDATES)
-        print(f"📊 Взято для проверки: {SAMPLE_CANDIDATES} (случайных)")
-    else:
-        print(f"📊 Взято для проверки: {len(candidates)} (все)")
-
-    # 6. Проверка через TCP
-    print(f"\n⏳ Шаг 2: Проверка TCP ({THREADS} потоков)...")
-    sem = asyncio.Semaphore(CONCURRENCY_SEM)
-    stop = False
-
-    async def score(item):
-        nonlocal stop
-        if stop:
-            return None
-        host, port, line = item
-        async with sem:
-            dt = await tcp_probe(host, port, TIMEOUT)
-            if dt is None:
-                return None
-            return (dt, line)
-
-    scored = []
-    tasks = [score(c) for c in candidates]
+    
+    print(f"\n⏳ Шаг 2: Проверка REALITY-прокси ({MAX_WORKERS} потоков)...")
+    working = []
     checked = 0
-    total = len(candidates)
-
-    for coro in asyncio.as_completed(tasks):
-        if stop:
-            break
-        checked += 1
-        res = await coro
-        if res is not None:
-            scored.append(res)
-            print(f"   ✅ {res[1][:50]}... {res[0]*1000:.0f} мс ({len(scored)}/{LIMIT_MAX})")
-            if len(scored) >= LIMIT_MAX:
-                print(f"   🎯 Достигнут лимит {LIMIT_MAX}, останавливаем проверку...")
-                stop = True
-                break
-        if checked % 25 == 0 and not stop:
-            print(f"   ⏳ Проверено {checked}/{total}... ({len(scored)} найдено)")
-
-    # 7. Сортируем и оставляем 600
-    scored.sort(key=lambda x: x[0])
-    top = scored[:LIMIT_MAX]
-
-    print(f"\n🎯 Рабочих REALITY-прокси: {len(top)}")
-
-    # 8. Сохраняем
-    out_path = os.path.join(os.path.dirname(__file__), "proxies.txt")
-    with open(out_path, "w", encoding="utf-8") as f:
-        if top:
-            for _, line in top:
-                f.write(line.strip() + "\n")
+    total = len(reality)
+    
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(check_proxy, p): p for p in reality}
+        
+        for future in as_completed(futures):
+            checked += 1
+            try:
+                result = future.result(timeout=10)
+                if result:
+                    proxy, ping = result
+                    working.append((proxy, ping))
+                    print(f"   ✅ {proxy[:50]}... {ping:.0f} мс ({len(working)} найдено)")
+            except:
+                pass
+            
+            if checked % 25 == 0:
+                print(f"   ⏳ Проверено {checked}/{total}... ({len(working)} найдено)")
+    
+    # Сортируем по пингу (от лучшего к худшему)
+    working.sort(key=lambda x: x[1])
+    
+    print(f"\n🎯 Рабочих REALITY-прокси: {len(working)}")
+    
+    with open(OUTPUT_FILE, 'w') as f:
+        if working:
+            for proxy, ping in working:
+                f.write(f"{proxy}\n")
         else:
             f.write("# Нет рабочих REALITY-прокси\n")
-
-    print(f"\n✅ Готово! Список REALITY-прокси сохранён в {out_path}")
+    
+    print(f"\n✅ Готово! Список REALITY-прокси сохранён в {OUTPUT_FILE}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
