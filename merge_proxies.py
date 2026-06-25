@@ -1,6 +1,5 @@
 import requests
-import asyncio
-import aiohttp
+import base64
 from datetime import datetime
 
 SOURCES = [
@@ -11,94 +10,44 @@ SOURCES = [
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
 ]
 
-OUTPUT_FILE = "proxies.txt"
-TIMEOUT = 5
-MAX_CONCURRENT = 20
-
-async def check_proxy_alive(proxy_string: str, session: aiohttp.ClientSession) -> bool:
-    """Проверяет, живой ли прокси через подключение к тестовому URL"""
-    try:
-        # Парсим тип прокси
-        if not any(proxy_string.startswith(p) for p in ["vless://", "ss://", "trojan://", "hysteria://", "tuic://"]):
-            return False
-        
-        timeout = aiohttp.ClientTimeout(total=TIMEOUT)
-        # Используем прокси для подключения
-        async with session.get(
-            "https://www.google.com",
-            timeout=timeout,
-            ssl=False,
-            proxy=proxy_string if proxy_string.startswith(("http://", "https://")) else None
-        ) as resp:
-            return resp.status == 200
-    except:
-        return False
-
-async def fetch_proxies(url: str, session: aiohttp.ClientSession) -> list:
-    """Загружает прокси из источника"""
-    try:
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status == 200:
-                text = await resp.text()
-                proxies = [line.strip() for line in text.split('\n') if line.strip()]
-                print(f"✓ Загружено {len(proxies)} из {url}")
-                return proxies
-    except Exception as e:
-        print(f"✗ Ошибка загрузки {url}: {e}")
-    return []
-
-async def check_all_proxies(proxies: list) -> list:
-    """Проверяет все прокси асинхронно"""
-    print(f"\n🔍 Проверяю {len(proxies)} прокси на живость...")
+def fetch_and_merge_configs():
+    """Получает конфиги из всех источников и объединяет их"""
+    all_configs = []
     
-    alive_proxies = []
-    checked = 0
-    
-    async with aiohttp.ClientSession() as session:
-        # Обрабатываем прокси пакетами
-        for i in range(0, len(proxies), MAX_CONCURRENT):
-            batch = proxies[i:i + MAX_CONCURRENT]
-            tasks = [check_proxy_alive(p, session) for p in batch]
-            results = await asyncio.gather(*tasks)
+    for source in SOURCES:
+        try:
+            print(f"Загружаю: {source}")
+            response = requests.get(source, timeout=10)
+            response.raise_for_status()
             
-            for proxy, is_alive in zip(batch, results):
-                checked += 1
-                if is_alive:
-                    alive_proxies.append(proxy)
-                    print(f"✓ [{checked}/{len(proxies)}] Живой: {proxy[:50]}...")
-                else:
-                    print(f"✗ [{checked}/{len(proxies)}] Мертвый: {proxy[:50]}...")
+            # Разделяем конфиги по строкам и удаляем пустые
+            configs = [line.strip() for line in response.text.split('\n') if line.strip()]
+            all_configs.extend(configs)
+            print(f"✓ Загружено {len(configs)} конфигов")
+            
+        except Exception as e:
+            print(f"✗ Ошибка при загрузке {source}: {e}")
     
-    return alive_proxies
+    # Удаляем дубликаты, сохраняя порядок
+    unique_configs = []
+    seen = set()
+    for config in all_configs:
+        if config not in seen:
+            unique_configs.append(config)
+            seen.add(config)
+    
+    print(f"\nВсего уникальных конфигов: {len(unique_configs)}")
+    return '\n'.join(unique_configs)
 
-async def main():
-    """Главная функция"""
-    print("=== Объединение и проверка прокси ===\n")
-    
-    # Загружаем все прокси
-    all_proxies = set()
-    async with aiohttp.ClientSession() as session:
-        tasks = [fetch_proxies(url, session) for url in SOURCES]
-        results = await asyncio.gather(*tasks)
-        
-        for proxies in results:
-            all_proxies.update(proxies)
-    
-    print(f"\n✓ Всего загружено: {len(all_proxies)} прокси")
-    
-    # Дедуплицируем
-    unique_proxies = list(all_proxies)
-    
-    # Проверяем живые
-    alive = await check_all_proxies(unique_proxies)
-    
-    # Сохраняем
-    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-        for proxy in alive:
-            f.write(proxy + '\n')
-    
-    print(f"\n✓ Живых прокси: {len(alive)} из {len(unique_proxies)}")
-    print(f"✓ Файл {OUTPUT_FILE} создан")
+def save_to_github(content):
+    """Сохраняет контент в файл (локально)"""
+    with open('proxies.txt', 'w', encoding='utf-8') as f:
+        f.write(content)
+    print("✓ Файл proxies.txt создан")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    print("=== Объединение подписок ===\n")
+    merged_content = fetch_and_merge_configs()
+    save_to_github(merged_content)
+    print("\nТеперь загрузи файл на GitHub вручную!")
+
