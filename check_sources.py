@@ -1,6 +1,5 @@
 import requests
 import sys
-from datetime import datetime
 
 SOURCES = [
     "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
@@ -10,53 +9,36 @@ SOURCES = [
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
 ]
 
+OUTPUT_FILE = "proxies.txt"
 TIMEOUT = 10
-LOG_FILE = "sources_check.log"
 
-def check_sources():
-    timestamp = datetime.now().isoformat()
-    log_lines = [f"[{timestamp}] Checking source availability...\n"]
+def fetch_and_merge():
+    """Загружает и дедуплицирует прокси из всех источников"""
+    all_proxies = set()
     
-    available = 0
-    unavailable = 0
+    print("=== Объединение подписок ===\n")
     
     for source in SOURCES:
         try:
-            response = requests.head(source, timeout=TIMEOUT, allow_redirects=True)
+            print(f"Загружаю: {source}")
+            response = requests.get(source, timeout=TIMEOUT)
             response.raise_for_status()
-            status = f"✓ {source} (OK)"
-            log_lines.append(status)
-            print(status)
-            available += 1
-        except requests.exceptions.Timeout:
-            status = f"✗ {source} (TIMEOUT)"
-            log_lines.append(status)
-            print(status)
-            unavailable += 1
-        except requests.exceptions.ConnectionError:
-            status = f"✗ {source} (CONNECTION ERROR)"
-            log_lines.append(status)
-            print(status)
-            unavailable += 1
+            
+            proxies = response.text.strip().split('\n')
+            proxies = [p.strip() for p in proxies if p.strip()]
+            all_proxies.update(proxies)
+            print(f"✓ Загружено {len(proxies)} конфигов\n")
         except Exception as e:
-            status = f"✗ {source} ({str(e)})"
-            log_lines.append(status)
-            print(status)
-            unavailable += 1
+            print(f"✗ Ошибка при загрузке {source}: {e}\n")
     
-    summary = f"\nResults: {available} available, {unavailable} unavailable\n"
-    log_lines.append(summary)
-    print(summary)
+    # Сохраняем дедуплицированные прокси
+    with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
+        for proxy in sorted(all_proxies):
+            f.write(proxy + '\n')
     
-    # Сохраняем в лог-файл
-    with open(LOG_FILE, 'a', encoding='utf-8') as f:
-        f.write('\n'.join(log_lines) + '\n')
-    
-    print(f"✓ Log saved to {LOG_FILE}")
-    
-    return unavailable == 0
+    print(f"✓ Всего уникальных конфигов: {len(all_proxies)}")
+    print(f"✓ Файл {OUTPUT_FILE} создан")
 
 if __name__ == "__main__":
-    success = check_sources()
-    sys.exit(0 if success else 1)
+    fetch_and_merge()
 
