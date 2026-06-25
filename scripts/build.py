@@ -168,17 +168,14 @@ def ping_from_russia(host):
         print(f"ping fail {host}: {e}")
         return None
 
-def rename_checked(line, cc, ping_ms):
+def rename_checked(line, cc, num):
+    """Формат: 🇷🇺RU#1"""
     line = line.strip()
     if not line or line.startswith("#"):
         return line
     base = re.sub(r"#.*$", "", line)
     f = flag(cc)
-    tag = f"{f}{cc or '??'}"
-    if ping_ms is not None:
-        tag += f"_{ping_ms}ms"
-    else:
-        tag += "_⚠"
+    tag = f"{f}{cc or '??'}#{num}"
     return f"{base}#{tag}"
 
 def main():
@@ -204,7 +201,7 @@ def main():
             f.write(line + "\n")
     print(f"\n=== Original: {len(unique)} lines -> {OUT_ORIGINAL} ===")
 
-    # ============ ПРОВЕРЕННАЯ ПОДПИСКА (гео + пинг) ============
+    # ============ ПРОВЕРЕННАЯ ПОДПИСКА (гео + пинг из РФ) ============
     servers = []
     other = []
     for line in unique:
@@ -235,21 +232,35 @@ def main():
             if done % 20 == 0:
                 print(f"progress: {done}/{total}")
 
-    # Сортировка: быстрые сверху, не отвечающие в конце
-    results.sort(key=lambda x: (
-        0 if x[2] is not None else 1,
-        x[2] if x[2] is not None else 99999,
-        x[0]
-    ))
+    # ФИЛЬТР: убираем мертвые серверы (ping_ms is None)
+    alive = [r for r in results if r[2] is not None]
+    dead_count = len(results) - len(alive)
+    print(f"\n=== Filtered: {len(alive)} alive, {dead_count} dead removed ===")
 
-    # Добавляем CIDR/SNI правила в конец
+    # Сортировка по пингу (быстрые сверху)
+    alive.sort(key=lambda x: (x[2], x[0]))
+
+    # Нумерация по странам
+    country_counters = {}
+    numbered = []
+    for line, cc, ms in alive:
+        cc_key = cc or "??"
+        if cc_key not in country_counters:
+            country_counters[cc_key] = 0
+        country_counters[cc_key] += 1
+        numbered.append((line, cc, country_counters[cc_key]))
+
+    # Добавляем CIDR/SNI правила в конец (без нумерации)
     for line in other:
-        results.append((line, None, None))
+        numbered.append((line, None, None))
 
     with open(OUT_CHECKED, "w", encoding="utf-8") as f:
-        for line, cc, ms in results:
-            f.write(rename_checked(line, cc, ms) + "\n")
-    print(f"\n=== Checked: {len(results)} lines -> {OUT_CHECKED} ===")
+        for line, cc, num in numbered:
+            if num is not None:
+                f.write(rename_checked(line, cc, num) + "\n")
+            else:
+                f.write(line + "\n")
+    print(f"\n=== Checked: {len(numbered)} lines -> {OUT_CHECKED} ===")
 
 if __name__ == "__main__":
     main()
