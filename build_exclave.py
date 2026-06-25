@@ -5,27 +5,26 @@ import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ============================================
-# НАСТРОЙКИ — ВСЕ ИСТОЧНИКИ
+# НАСТРОЙКИ
 # ============================================
 SUBSCRIPTIONS = [
-    # ===== ТВОИ РОДНЫЕ ПОДПИСКИ =====
+    # Твои родные подписки
     "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-all.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
     
-    # ===== НОВЫЕ ИСТОЧНИКИ =====
-    # FastNodes — лучший агрегатор
+    # FastNodes
     "https://raw.githubusercontent.com/rtwo2/FastNodes/main/sub/everything.txt",
     "https://raw.githubusercontent.com/rtwo2/FastNodes/main/sub/protocols/vless.txt",
     "https://raw.githubusercontent.com/rtwo2/FastNodes/main/sub/countries/RU.txt",
     
-    # Nexus Nodes — тестирует задержку
+    # Nexus Nodes
     "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/all.txt",
     "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/light.txt",
     
-    # Hidashimora — проверенные короткие списки
+    # Hidashimora
     "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/1.1.txt",
     "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/2.1.txt",
     "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/3.1.txt",
@@ -61,15 +60,16 @@ REPORT_FILE = "report.txt"
 MAX_PROXIES = 600
 TIMEOUT = 3
 MAX_WORKERS = 15
-PING_TARGET = "tver.ru"
-MAX_PING_MS = 400
+
+# ЖЁСТКИЕ ЛИМИТЫ
+PING_TARGETS = ["ya.ru", "tver.ru"]  # Сначала Яндекс, потом Тверь
+MAX_PING_MS = 300  # Жёсткий лимит — 300 мс
 
 # ============================================
 # ЗАГРУЗКА ПОДПИСОК И УДАЛЕНИЕ ДУБЛЕЙ
 # ============================================
 
 def fetch_subscriptions(urls):
-    """Скачивает все подписки и возвращает список УНИКАЛЬНЫХ прокси."""
     raw_proxies = []
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -91,7 +91,6 @@ def fetch_subscriptions(urls):
         except Exception as e:
             print(f"   ❌ Ошибка: {e}")
     
-    # УДАЛЯЕМ ДУБЛИКИ
     unique_proxies = list(set(raw_proxies))
     print(f"\n📊 Удалено дублей: {len(raw_proxies) - len(unique_proxies)}")
     print(f"📊 Уникальных прокси: {len(unique_proxies)}")
@@ -99,7 +98,7 @@ def fetch_subscriptions(urls):
     return unique_proxies
 
 # ============================================
-# ПРОВЕРКА ПРОКСИ
+# ПРОВЕРКА ПРОКСИ (ДВОЙНОЙ ПИНГ)
 # ============================================
 
 def extract_host(proxy_link):
@@ -114,6 +113,15 @@ def extract_host(proxy_link):
         pass
     return None
 
+def ping_target(host):
+    """Измеряет пинг до указанного хоста через DNS."""
+    try:
+        start = time.time()
+        socket.gethostbyname(host)
+        return (time.time() - start) * 1000
+    except:
+        return None
+
 def check_proxy(proxy_link):
     proxy_link = proxy_link.strip()
     if not proxy_link or proxy_link.startswith('#'):
@@ -123,17 +131,17 @@ def check_proxy(proxy_link):
     if not host:
         return None
     
-    # Пинг до Tver.ru
-    try:
-        start_ping = time.time()
-        socket.gethostbyname(PING_TARGET)
-        ping_to_tver = (time.time() - start_ping) * 1000
-        if ping_to_tver > MAX_PING_MS:
-            return None
-    except:
-        pass
+    # ===== ПЕРВЫЙ ТЕСТ: ПИНГ ДО ЯНДЕКСА =====
+    ping_yandex = ping_target("ya.ru")
+    if ping_yandex is None or ping_yandex > MAX_PING_MS:
+        return None  # Яндекс недоступен или слишком долго
     
-    # TCP-проверка
+    # ===== ВТОРОЙ ТЕСТ: ПИНГ ДО ТВЕРИ =====
+    ping_tver = ping_target("tver.ru")
+    if ping_tver is None or ping_tver > MAX_PING_MS:
+        return None  # Тверь недоступна или слишком долго
+    
+    # ===== ТРЕТИЙ ТЕСТ: TCP-ПРОВЕРКА =====
     ports = [443, 80, 8080, 8443, 8880, 2096, 2377, 1935, 41930, 35401, 666, 1080]
     for port in ports:
         try:
@@ -146,7 +154,9 @@ def check_proxy(proxy_link):
             if result == 0:
                 ping = (time.time() - start) * 1000
                 if ping < 1000:
-                    return proxy_link, ping
+                    # Возвращаем средний пинг (Яндекс + Тверь) / 2
+                    avg_ping = (ping_yandex + ping_tver) / 2
+                    return proxy_link, avg_ping
         except:
             pass
     
@@ -158,7 +168,7 @@ def check_proxy(proxy_link):
 
 def main():
     print("=" * 50)
-    print("🚀 СБОРКА СПИСКА ПРОКСИ")
+    print("🚀 СБОРКА СПИСКА (ДВОЙНОЙ ПИНГ)")
     print("=" * 50)
     
     print("\n📦 Шаг 1: Загрузка подписок и удаление дублей...")
@@ -170,19 +180,17 @@ def main():
             f.write("# Нет прокси\n")
         return
     
-    # Пинг до Tver.ru (для отчёта)
-    print(f"\n⏳ Пинг до {PING_TARGET}...")
-    try:
-        start = time.time()
-        socket.gethostbyname(PING_TARGET)
-        ping = (time.time() - start) * 1000
-        print(f"   ✅ Пинг до {PING_TARGET}: {ping:.0f} мс")
-    except:
-        print(f"   ⚠️ Не удалось пропинговать {PING_TARGET}")
-        ping = 0
+    # Проверяем доступность Яндекса и Твери
+    print(f"\n⏳ Проверка целевых хостов...")
+    ping_ya = ping_target("ya.ru")
+    ping_tv = ping_target("tver.ru")
+    print(f"   📍 Яндекс: {ping_ya:.0f} мс" if ping_ya else "   ❌ Яндекс недоступен")
+    print(f"   📍 Тверь: {ping_tv:.0f} мс" if ping_tv else "   ❌ Тверь недоступна")
     
-    # Проверка прокси
-    print(f"\n⏳ Шаг 2: Проверка ({MAX_WORKERS} потоков)...")
+    if ping_ya is None or ping_tv is None:
+        print("⚠️ Один из хостов недоступен, но продолжаем...")
+    
+    print(f"\n⏳ Шаг 2: Проверка прокси ({MAX_WORKERS} потоков)...")
     working_proxies = []
     checked = 0
     total = len(all_proxies)
@@ -195,23 +203,21 @@ def main():
             try:
                 result = future.result(timeout=10)
                 if result:
-                    proxy, proxy_ping = result
-                    working_proxies.append((proxy, proxy_ping))
-                    print(f"   ✅ {proxy[:50]}... {proxy_ping:.0f} мс")
+                    proxy, avg_ping = result
+                    working_proxies.append((proxy, avg_ping))
+                    print(f"   ✅ {proxy[:50]}... {avg_ping:.0f} мс (ср.)")
             except:
                 pass
             
             if checked % 25 == 0:
                 print(f"   ⏳ Проверено {checked}/{total}...")
     
-    # Сортируем по пингу и оставляем лучшие
     working_proxies.sort(key=lambda x: x[1])
     if len(working_proxies) > MAX_PROXIES:
         working_proxies = working_proxies[:MAX_PROXIES]
     
     print(f"\n🎯 Рабочих прокси: {len(working_proxies)}")
     
-    # Сохраняем результат
     with open(OUTPUT_FILE, 'w') as f:
         if working_proxies:
             for proxy, _ in working_proxies:
@@ -219,17 +225,17 @@ def main():
         else:
             f.write("# Нет рабочих прокси\n")
     
-    # Отчёт
     with open(REPORT_FILE, 'w') as f:
         f.write(f"Собрано: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"Пинг до {PING_TARGET}: {ping:.0f} мс\n")
+        f.write(f"Пинг до Яндекса: {ping_ya:.0f} мс\n" if ping_ya else "Пинг до Яндекса: недоступен\n")
+        f.write(f"Пинг до Твери: {ping_tv:.0f} мс\n" if ping_tv else "Пинг до Твери: недоступен\n")
         f.write(f"Всего прокси: {len(working_proxies)}\n")
         if working_proxies:
             f.write(f"Средний пинг: {sum(p for _, p in working_proxies) / len(working_proxies):.0f} мс\n")
             f.write(f"Минимальный: {min(p for _, p in working_proxies):.0f} мс\n")
         f.write("\nТоп-10:\n")
-        for proxy, proxy_ping in working_proxies[:10]:
-            f.write(f"  {proxy_ping:.0f} мс | {proxy[:80]}...\n")
+        for proxy, avg_ping in working_proxies[:10]:
+            f.write(f"  {avg_ping:.0f} мс | {proxy[:80]}...\n")
     
     print(f"\n✅ Готово! Список сохранён в {OUTPUT_FILE}")
 
