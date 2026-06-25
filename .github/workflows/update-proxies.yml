@@ -20,15 +20,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       
-      - name: Check sources and merge proxies
-        run: python merge_proxies.py
+      - name: Check source availability
+        run: python check_sources.py
         continue-on-error: true
+      
+      - name: Merge and deduplicate proxies
+        run: python merge_proxies.py
       
       - name: Commit and push changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add proxies.txt
+          git add proxies.txt sources_check.log
           git commit -m "Update proxies: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes"
           git push
-
