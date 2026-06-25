@@ -105,33 +105,19 @@ def fetch_subscriptions(urls):
     return list(set(all_proxies))
 
 # ============================================
-# ГЕНЕРАЦИЯ SING-BOX КОНФИГА (БЕЗ dns outbound)
+# ГЕНЕРАЦИЯ SING-BOX КОНФИГА (ИСПРАВЛЕННАЯ)
 # ============================================
 
 def generate_singbox_config():
-    """Создаёт Sing-box конфиг (совместимый с v1.13+)."""
-    
     config = {
-        "log": {
-            "level": "info"
-        },
+        "log": {"level": "info"},
         "dns": {
             "servers": [
-                {
-                    "tag": "dns-remote",
-                    "address": "https://dns.google/dns-query"
-                },
-                {
-                    "tag": "dns-local",
-                    "address": "223.5.5.5",
-                    "detour": "direct"
-                }
+                {"tag": "dns-remote", "address": "https://dns.google/dns-query"},
+                {"tag": "dns-local", "address": "223.5.5.5", "detour": "direct"}
             ],
             "rules": [
-                {
-                    "domain_suffix": [".ru", ".su", ".рф"],
-                    "server": "dns-local"
-                }
+                {"domain_suffix": [".ru", ".su", ".рф"], "server": "dns-local"}
             ]
         },
         "inbounds": [
@@ -143,74 +129,22 @@ def generate_singbox_config():
             }
         ],
         "outbounds": [
-            {
-                "type": "selector",
-                "tag": "PROXY",
-                "outbounds": ["auto", "direct"]
-            },
-            {
-                "type": "urltest",
-                "tag": "auto",
-                "outbounds": ["merged-sub"],
-                "url": "http://cp.cloudflare.com/generate_204",
-                "interval": "5m",
-                "tolerance": 50
-            },
-            {
-                "type": "selector",
-                "tag": "TORRENT",
-                "outbounds": ["auto-torrent", "direct"]
-            },
-            {
-                "type": "urltest",
-                "tag": "auto-torrent",
-                "outbounds": ["merged-sub"],
-                "url": "http://cp.cloudflare.com/generate_204",
-                "interval": "5m",
-                "tolerance": 100
-            },
-            {
-                "type": "selector",
-                "tag": "TELEGRAM",
-                "outbounds": ["auto", "direct"]
-            },
-            {
-                "type": "selector",
-                "tag": "PERSONAL24",
-                "outbounds": ["auto", "direct"]
-            },
-            {
-                "type": "direct",
-                "tag": "direct"
-            },
-            {
-                "type": "block",
-                "tag": "block"
-            }
-            # dns-outbound УДАЛЁН — DNS настраивается через dns.rules
+            {"type": "selector", "tag": "PROXY", "outbounds": ["auto", "direct"]},
+            {"type": "urltest", "tag": "auto", "outbounds": ["merged-sub"], "url": "http://cp.cloudflare.com/generate_204", "interval": "5m", "tolerance": 50},
+            {"type": "selector", "tag": "TORRENT", "outbounds": ["auto-torrent", "direct"]},
+            {"type": "urltest", "tag": "auto-torrent", "outbounds": ["merged-sub"], "url": "http://cp.cloudflare.com/generate_204", "interval": "5m", "tolerance": 100},
+            {"type": "selector", "tag": "TELEGRAM", "outbounds": ["auto", "direct"]},
+            {"type": "selector", "tag": "PERSONAL24", "outbounds": ["auto", "direct"]},
+            {"type": "direct", "tag": "direct"},
+            {"type": "block", "tag": "block"}
         ],
         "route": {
             "rules": [
-                {
-                    "rule_set": ["torrent-clients", "torrent-trackers"],
-                    "outbound": "TORRENT"
-                },
-                {
-                    "rule_set": ["telegram"],
-                    "outbound": "TELEGRAM"
-                },
-                {
-                    "rule_set": ["personal24"],
-                    "outbound": "PERSONAL24"
-                },
-                {
-                    "rule_set": ["ru-bundle", "ru-custom"],
-                    "outbound": "direct"
-                },
-                {
-                    "rule_set": ["skrepysh-proxy"],
-                    "outbound": "PROXY"
-                }
+                {"rule_set": ["torrent-clients", "torrent-trackers"], "outbound": "TORRENT"},
+                {"rule_set": ["telegram"], "outbound": "TELEGRAM"},
+                {"rule_set": ["personal24"], "outbound": "PERSONAL24"},
+                {"rule_set": ["ru-bundle", "ru-custom"], "outbound": "direct"},
+                {"rule_set": ["skrepysh-proxy"], "outbound": "PROXY"}
             ],
             "rule_set": [
                 {
@@ -218,56 +152,62 @@ def generate_singbox_config():
                     "type": "remote",
                     "format": "yaml",
                     "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/main/ru-bundle/rule.yaml",
-                    "update_interval": "24h"
+                    "update_interval": "24h",
+                    "download_detour": "direct"
                 },
                 {
                     "tag": "ru-custom",
                     "type": "remote",
                     "format": "yaml",
                     "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/main/ru-custom/rule.yaml",
-                    "update_interval": "24h"
+                    "update_interval": "24h",
+                    "download_detour": "direct"
                 },
                 {
                     "tag": "torrent-clients",
                     "type": "remote",
                     "format": "yaml",
                     "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/refs/heads/main/other/torrent-clients.yaml",
-                    "update_interval": "24h"
+                    "update_interval": "24h",
+                    "download_detour": "direct"
                 },
                 {
                     "tag": "torrent-trackers",
                     "type": "remote",
                     "format": "mrs",
                     "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/main/other/torrent-trackers.mrs",
-                    "update_interval": "24h"
+                    "update_interval": "24h",
+                    "download_detour": "direct"
                 },
                 {
                     "tag": "telegram",
                     "type": "remote",
                     "format": "yaml",
                     "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/main/telegram/rule.yaml",
-                    "update_interval": "24h"
+                    "update_interval": "24h",
+                    "download_detour": "direct"
                 },
                 {
                     "tag": "personal24",
                     "type": "remote",
                     "format": "yaml",
                     "url": "https://raw.githubusercontent.com/legiz-ru/mihomo-rule-sets/main/personal-24/rule.yaml",
-                    "update_interval": "24h"
+                    "update_interval": "24h",
+                    "download_detour": "direct"
                 },
                 {
                     "tag": "skrepysh-proxy",
                     "type": "remote",
                     "format": "yaml",
                     "url": "https://raw.githubusercontent.com/Skrepysh/mihomo-rulesets/refs/heads/main/skrepysh-rulesets/skrepysh-proxy.yaml",
-                    "update_interval": "24h"
+                    "update_interval": "24h",
+                    "download_detour": "direct"
                 }
             ],
             "auto_detect_interface": True,
             "final": "PROXY"
         }
     }
-    
     return config
 
 # ============================================
@@ -276,7 +216,7 @@ def generate_singbox_config():
 
 def main():
     print("=" * 50)
-    print("🚀 СБОРКА SING-BOX КОНФИГА (совместимый с v1.13+)")
+    print("🚀 СБОРКА SING-BOX КОНФИГА")
     print("=" * 50)
     
     os.makedirs(OUTPUT_DIR, exist_ok=True)
