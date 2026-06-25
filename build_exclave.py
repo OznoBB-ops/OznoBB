@@ -5,7 +5,7 @@ import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ============================================
-# НАСТРОЙКИ
+# НАСТРОЙКИ — ТОЛЬКО REALITY
 # ============================================
 SUBSCRIPTIONS = [
     # Твои родные подписки
@@ -24,7 +24,7 @@ SUBSCRIPTIONS = [
     "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/all.txt",
     "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/light.txt",
     
-    # Hidashimora
+    # Hidashimora (28 списков)
     "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/1.1.txt",
     "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/2.1.txt",
     "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/main/configs/3.1.txt",
@@ -62,8 +62,16 @@ TIMEOUT = 3
 MAX_WORKERS = 15
 
 # ЖЁСТКИЕ ЛИМИТЫ
-PING_TARGETS = ["ya.ru", "tver.ru"]  # Сначала Яндекс, потом Тверь
-MAX_PING_MS = 300  # Жёсткий лимит — 300 мс
+PING_TARGETS = ["ya.ru", "tver.ru"]
+MAX_PING_MS = 300
+
+# ============================================
+# ФУНКЦИЯ ПРОВЕРКИ REALITY
+# ============================================
+
+def is_reality(proxy_link):
+    """Проверяет, что это VLESS с REALITY."""
+    return proxy_link.startswith('vless://') and 'security=reality' in proxy_link
 
 # ============================================
 # ЗАГРУЗКА ПОДПИСОК И УДАЛЕНИЕ ДУБЛЕЙ
@@ -84,6 +92,7 @@ def fetch_subscriptions(urls):
             for line in lines:
                 line = line.strip()
                 if line and not line.startswith('#'):
+                    # Сохраняем ВСЕ строки, потом отфильтруем REALITY
                     if re.match(r'^(ss|vless|vmess|trojan|hysteria2|socks5|http)://', line):
                         raw_proxies.append(line)
             
@@ -91,6 +100,7 @@ def fetch_subscriptions(urls):
         except Exception as e:
             print(f"   ❌ Ошибка: {e}")
     
+    # Удаляем дубли
     unique_proxies = list(set(raw_proxies))
     print(f"\n📊 Удалено дублей: {len(raw_proxies) - len(unique_proxies)}")
     print(f"📊 Уникальных прокси: {len(unique_proxies)}")
@@ -114,7 +124,6 @@ def extract_host(proxy_link):
     return None
 
 def ping_target(host):
-    """Измеряет пинг до указанного хоста через DNS."""
     try:
         start = time.time()
         socket.gethostbyname(host)
@@ -127,21 +136,25 @@ def check_proxy(proxy_link):
     if not proxy_link or proxy_link.startswith('#'):
         return None
     
+    # ТОЛЬКО REALITY
+    if not is_reality(proxy_link):
+        return None
+    
     host = extract_host(proxy_link)
     if not host:
         return None
     
-    # ===== ПЕРВЫЙ ТЕСТ: ПИНГ ДО ЯНДЕКСА =====
+    # 1. Пинг до Яндекса
     ping_yandex = ping_target("ya.ru")
     if ping_yandex is None or ping_yandex > MAX_PING_MS:
-        return None  # Яндекс недоступен или слишком долго
+        return None
     
-    # ===== ВТОРОЙ ТЕСТ: ПИНГ ДО ТВЕРИ =====
+    # 2. Пинг до Твери
     ping_tver = ping_target("tver.ru")
     if ping_tver is None or ping_tver > MAX_PING_MS:
-        return None  # Тверь недоступна или слишком долго
+        return None
     
-    # ===== ТРЕТИЙ ТЕСТ: TCP-ПРОВЕРКА =====
+    # 3. TCP-проверка
     ports = [443, 80, 8080, 8443, 8880, 2096, 2377, 1935, 41930, 35401, 666, 1080]
     for port in ports:
         try:
@@ -154,7 +167,6 @@ def check_proxy(proxy_link):
             if result == 0:
                 ping = (time.time() - start) * 1000
                 if ping < 1000:
-                    # Возвращаем средний пинг (Яндекс + Тверь) / 2
                     avg_ping = (ping_yandex + ping_tver) / 2
                     return proxy_link, avg_ping
         except:
@@ -168,16 +180,20 @@ def check_proxy(proxy_link):
 
 def main():
     print("=" * 50)
-    print("🚀 СБОРКА СПИСКА (ДВОЙНОЙ ПИНГ)")
+    print("🚀 СБОРКА REALITY-ПРОКСИ (ДВОЙНОЙ ПИНГ)")
     print("=" * 50)
     
-    print("\n📦 Шаг 1: Загрузка подписок и удаление дублей...")
+    print("\n📦 Шаг 1: Загрузка подписок...")
     all_proxies = fetch_subscriptions(SUBSCRIPTIONS)
     
-    if len(all_proxies) == 0:
-        print("❌ Нет прокси для проверки!")
+    # Считаем REALITY
+    reality_count = sum(1 for p in all_proxies if is_reality(p))
+    print(f"📊 Из них REALITY: {reality_count}")
+    
+    if len(all_proxies) == 0 or reality_count == 0:
+        print("❌ Нет REALITY-прокси для проверки!")
         with open(OUTPUT_FILE, 'w') as f:
-            f.write("# Нет прокси\n")
+            f.write("# Нет REALITY-прокси\n")
         return
     
     # Проверяем доступность Яндекса и Твери
@@ -187,10 +203,7 @@ def main():
     print(f"   📍 Яндекс: {ping_ya:.0f} мс" if ping_ya else "   ❌ Яндекс недоступен")
     print(f"   📍 Тверь: {ping_tv:.0f} мс" if ping_tv else "   ❌ Тверь недоступна")
     
-    if ping_ya is None or ping_tv is None:
-        print("⚠️ Один из хостов недоступен, но продолжаем...")
-    
-    print(f"\n⏳ Шаг 2: Проверка прокси ({MAX_WORKERS} потоков)...")
+    print(f"\n⏳ Шаг 2: Проверка REALITY-прокси ({MAX_WORKERS} потоков)...")
     working_proxies = []
     checked = 0
     total = len(all_proxies)
@@ -216,20 +229,20 @@ def main():
     if len(working_proxies) > MAX_PROXIES:
         working_proxies = working_proxies[:MAX_PROXIES]
     
-    print(f"\n🎯 Рабочих прокси: {len(working_proxies)}")
+    print(f"\n🎯 Рабочих REALITY-прокси: {len(working_proxies)}")
     
     with open(OUTPUT_FILE, 'w') as f:
         if working_proxies:
             for proxy, _ in working_proxies:
                 f.write(f"{proxy}\n")
         else:
-            f.write("# Нет рабочих прокси\n")
+            f.write("# Нет рабочих REALITY-прокси\n")
     
     with open(REPORT_FILE, 'w') as f:
         f.write(f"Собрано: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"Пинг до Яндекса: {ping_ya:.0f} мс\n" if ping_ya else "Пинг до Яндекса: недоступен\n")
         f.write(f"Пинг до Твери: {ping_tv:.0f} мс\n" if ping_tv else "Пинг до Твери: недоступен\n")
-        f.write(f"Всего прокси: {len(working_proxies)}\n")
+        f.write(f"Всего REALITY прокси: {len(working_proxies)}\n")
         if working_proxies:
             f.write(f"Средний пинг: {sum(p for _, p in working_proxies) / len(working_proxies):.0f} мс\n")
             f.write(f"Минимальный: {min(p for _, p in working_proxies):.0f} мс\n")
@@ -237,7 +250,7 @@ def main():
         for proxy, avg_ping in working_proxies[:10]:
             f.write(f"  {avg_ping:.0f} мс | {proxy[:80]}...\n")
     
-    print(f"\n✅ Готово! Список сохранён в {OUTPUT_FILE}")
+    print(f"\n✅ Готово! Список REALITY-прокси сохранён в {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     main()
