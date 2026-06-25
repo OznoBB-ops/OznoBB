@@ -19,15 +19,18 @@ URLS = [
     "https://raw.githubusercontent.com/ninjastrikers/Nexus-nodes/main/configs/light.txt",
 ]
 
-PORTS = [443, 80, 8080, 8443, 8880, 2096, 2377, 1935, 41930, 35401, 666, 1080]
+LIMIT_MAX = 600
+LIMIT_MIN = 500
 
-# Ваши параметры
-SAMPLE_BEFORE_CHECK = 2000
-LIMIT = 600
+# сколько кандидатов (reality) брать на проверку “с запасом”
+SAMPLE_CANDIDATES = 8000
+
 THREADS = 15
-TIMEOUT_PER_PORT = 3.0
+TIMEOUT = 3.0  # 3 секунды на TCP-connect
+CONCURRENCY_SEM = THREADS
 
-REALITY_LINE_RE = re.compile(r"^vless://\S+$", re.IGNORECASE)
+REALITY_RE = re.compile(r"(?i)^vless://\S+")
+SECURITY_RE = re.compile(r"(?i)(?:^|\?|&)security=reality(?:&|$)")
 
 
 def extract_reality_vless_lines(text: str) -> list[str]:
@@ -36,74 +39,62 @@ def extract_reality_vless_lines(text: str) -> list[str]:
         line = raw_line.strip()
         if not line:
             continue
-        if not REALITY_LINE_RE.match(line):
+        if not REALITY_RE.match(line):
             continue
-        # фильтруем только security=reality
-        # (line может содержать параметры без порядка)
-        if "security=reality" in line:
-            out.append(line)
+        if not SECURITY_RE.search(line):
+            continue
+        out.append(line)
     return out
 
 
-def parse_host_port_from_vless(line: str):
-    # ожидаем vless://[...@]host:port?...security=reality...
+def parse_host_port(line: str):
+    # Пытаемся разобрать vless://... как URL.
+    # Обычно host/port находятся в netloc: vless://[userinfo@]host:port?...
     u = urlparse(line)
     host = u.hostname
     port = u.port
-    if not host or not port:
-        return None, None
 
-    qs = parse_qs(u.query)
-    security = qs.get("security", [None])[0]
-    if security != "reality":
-        return None, None
+    if host and port:
+        return host, port
 
-    return host, port
+    # fallback: если urlparse не вытянул порт, пробуем вытащить host:port грубо
+    # (берём первое появление host:port после vless://)
+    m = re.search(r"(?i)^vless://[^@/]*@?([^:/\s]+):(\d+)", line)
+    if m:
+        return m.group(1), int(m.group(2))
 
-
-async def tcp_probe_first_success(host: str, sem: asyncio.Semaphore) -> float | None:
-    """
-    Проверяем список портов по порядку.
-    Возвращаем минимальное время успешного connect среди PORTS (в секундах), либо None если все неуспешны.
-    Для каждого порта используем TIMEOUT_PER_PORT.
-    """
-    best = None
-
-    # sem ограничивает число одновременно выполняемых TCP connect-операций (внутри задач).
-    # Мы ставим acquisition на каждый порт отдельно, чтобы параллельность реально соблюдалась.
-    for p in PORTS:
-        async with sem:
-            start = time.perf_counter()
-            try:
-                conn = asyncio.open_connection(host, p)
-                reader, writer = await asyncio.wait_for(conn, timeout=TIMEOUT_PER_PORT)
-                writer.close()
-                try:
-                    await writer.wait_closed()
-                except Exception:
-                    pass
-                dt = time.perf_counter() - start
-                best = dt if best is None else min(best, dt)
-                # ранняя остановка внутри прокси:
-                # если нашли прям “очень быстро”, можно продолжать не всегда.
-                # Но чтобы соответствовать “берём лучшие по времени” — достаточно best по минимальному dt.
-                # Продолжаем перебор портов, чтобы не потерять ещё быстрее.
-            except Exception:
-                pass
-
-    return best
+    return None, None
 
 
-async def fetch_all(session, url: str) -> str:
+async def tcp_probe(host: str, port: int, timeout: float) -> float | None:
+    start = time.perf_counter()
+    try:
+        fut = asyncio.open_connection(host, port)
+        reader, writer = await asyncio.wait_for(fut, timeout=timeout)
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+        dt = time.perf_counter() - start
+        return dt
+    except Exception:
+        return None
+
+
+async def fetch_text(session, url: str) -> str:
     async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as r:
         r.raise_for_status()
         return await r.text(errors="ignore")
 
 
 async def main():
+    # 1) скачать источники
     async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
-        tasks = [fetch_all(session, u) for u in URLS]
-        pages = await asyncio.gather(*tasks, return_exceptions=True)
+        pages = await asyncio.gather(
+            *[fetch_text(session, u) for u in URLS],
+            return_exceptions=True
+        )
 
     all_lines = []
     for p in pages:
@@ -114,54 +105,55 @@ async def main():
     # дедуп
     all_lines = list(dict.fromkeys(all_lines))
 
-    # подготовим кандидатов с парсингом host/port (порт из самого vless://...:port)
-    # (tcp_probe ниже игнорирует порт vless:// и проверяет фиксированный набор PORTS как в ТЗ,
-    # но если в URL нет host/port — строка всё равно битая, выкидываем)
+    # 2) кандидаты с host/port
     candidates = []
     for line in all_lines:
-        host, port = parse_host_port_from_vless(line)
-        if host and port:
-            candidates.append(line)
+        host, port = parse_host_port(line)
+        if host and port and 1 <= port <= 65535:
+            candidates.append((host, port, line))
 
     if not candidates:
-        # создаём пустой файл, чтобы workflow не падал
         out_path = os.path.join(os.path.dirname(__file__), "proxies.txt")
         with open(out_path, "w", encoding="utf-8") as f:
-            pass
+            f.write("")
         return
 
-    # случайная выборка до 2000
-    if len(candidates) > SAMPLE_BEFORE_CHECK:
-        candidates = random.sample(candidates, SAMPLE_BEFORE_CHECK)
+    # 3) выборка “с запасом” перед проверкой
+    if len(candidates) > SAMPLE_CANDIDATES:
+        candidates = random.sample(candidates, SAMPLE_CANDIDATES)
 
-    sem = asyncio.Semaphore(THREADS)
+    sem = asyncio.Semaphore(CONCURRENCY_SEM)
 
-    async def score(line: str):
-        host, _ = parse_host_port_from_vless(line)
-        if not host:
-            return None
-        dt = await tcp_probe_first_success(host, sem)
-        if dt is None:
-            return None
-        return (dt, line)
+    async def score(item):
+        host, port, line = item
+        async with sem:
+            dt = await tcp_probe(host, port, TIMEOUT)
+            if dt is None:
+                return None
+            return (dt, line)
 
-    # проверяем все кандидаты (в этом варианте “строго остановить при достижении 600” сложно без cancel;
-    # сортировку делаем по факту. По смыслу лимит 600 сохраняется.)
-    results = []
-    scored = await asyncio.gather(*[score(c) for c in candidates], return_exceptions=True)
-    for item in scored:
-        if isinstance(item, Exception) or item is None:
-            continue
-        results.append(item)
+    scored = []
+    tasks = [score(c) for c in candidates]
+    for coro in asyncio.as_completed(tasks):
+        res = await coro
+        if res is not None:
+            scored.append(res)
 
-    results.sort(key=lambda x: x[0])
-    top = results[:LIMIT]
+    # 4) топ-600 по времени коннекта
+    scored.sort(key=lambda x: x[0])
+    top = scored[:LIMIT_MAX]
 
+    # 5) (не строгое “остановиться на 600”, но итог будет максимум 600)
     out_path = os.path.join(os.path.dirname(__file__), "proxies.txt")
     with open(out_path, "w", encoding="utf-8") as f:
         for _, line in top:
             f.write(line.strip() + "\n")
 
+    # В лог можно посмотреть сколько живых получилось
+    print(f"Reality total lines: {len(all_lines)}")
+    print(f"Candidates with host:port: {len(candidates)}")
+    print(f"Live after TCP: {len(scored)}")
+    print(f"Wrote to proxies.txt: {len(top)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
