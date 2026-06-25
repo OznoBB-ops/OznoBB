@@ -4,49 +4,51 @@ allow-lan: false
 mode: rule
 log-level: info
 external-controller: 127.0.0.1:9090
+
 proxy-groups:
-- name: PROXY
-  type: select
-  proxies:
-  - auto
-  - DIRECT
-  use:
-  - merged-sub
-- name: auto
-  type: url-test
-  url: http://cp.cloudflare.com/generate_204
-  interval: 300
-  tolerance: 50
-  use:
-  - merged-sub
-- name: TORRENT
-  type: select
-  proxies:
-  - auto-torrent
-  - DIRECT
-  use:
-  - merged-sub
-- name: auto-torrent
-  type: url-test
-  url: http://cp.cloudflare.com/generate_204
-  interval: 300
-  tolerance: 100
-  use:
-  - merged-sub
-- name: TELEGRAM
-  type: select
-  proxies:
-  - auto
-  - DIRECT
-  use:
-  - merged-sub
-- name: PERSONAL24
-  type: select
-  proxies:
-  - auto
-  - DIRECT
-  use:
-  - merged-sub
+  - name: PROXY
+    type: select
+    proxies:
+      - auto
+      - DIRECT
+    use:
+      - merged-sub
+  - name: auto
+    type: url-test
+    url: http://cp.cloudflare.com/generate_204
+    interval: 300
+    tolerance: 50
+    use:
+      - merged-sub
+  - name: TORRENT
+    type: select
+    proxies:
+      - auto-torrent
+      - DIRECT
+    use:
+      - merged-sub
+  - name: auto-torrent
+    type: url-test
+    url: http://cp.cloudflare.com/generate_204
+    interval: 300
+    tolerance: 100
+    use:
+      - merged-sub
+  - name: TELEGRAM
+    type: select
+    proxies:
+      - auto
+      - DIRECT
+    use:
+      - merged-sub
+  - name: PERSONAL24
+    type: select
+    proxies:
+      - auto
+      - DIRECT
+    use:
+      - merged-sub
+
 proxy-providers:
   merged-sub:
     type: http
@@ -57,6 +59,7 @@ proxy-providers:
       enable: true
       url: http://cp.cloudflare.com/generate_204
       interval: 600
+
 rule-providers:
   ru-bundle:
     type: http
@@ -101,12 +104,13 @@ rule-providers:
     interval: 86400
     behavior: classical
     format: yaml
+
 rules:
-- RULE-SET,torrent-clients,TORRENT
-- RULE-SET,torrent-trackers,TORRENT
-- RULE-SET,telegram,TELEGRAM
-- RULE-SET,personal24,PERSONAL24
-- RULE-SET,ru-bundle,DIRECT
-- RULE-SET,ru-custom,DIRECT
-- RULE-SET,skrepysh-proxy,PROXY
-- MATCH,PROXY
+  - RULE-SET,torrent-clients,TORRENT
+  - RULE-SET,torrent-trackers,TORRENT
+  - RULE-SET,telegram,TELEGRAM
+  - RULE-SET,personal24,PERSONAL24
+  - RULE-SET,ru-bundle,DIRECT
+  - RULE-SET,ru-custom,DIRECT
+  - RULE-SET,skrepysh-proxy,PROXY
+  - MATCH,PROXY
