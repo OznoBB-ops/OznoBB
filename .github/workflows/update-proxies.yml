@@ -2,12 +2,13 @@ name: Update Proxies
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Каждый час в начале часа
+    - cron: '0 * * * *'  # Каждый час
   workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    
     steps:
       - uses: actions/checkout@v3
       
@@ -17,15 +18,17 @@ jobs:
           python-version: '3.11'
       
       - name: Install dependencies
-        run: pip install requests
+        run: pip install -r requirements.txt
       
-      - name: Merge proxies
+      - name: Check sources and merge proxies
         run: python merge_proxies.py
+        continue-on-error: true
       
-      - name: Commit and push
+      - name: Commit and push changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add proxies.txt
-          git commit -m "Auto: Update proxies $(date)" || exit 0
+          git commit -m "Update proxies: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes"
           git push
+
