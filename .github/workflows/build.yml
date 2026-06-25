@@ -1,4 +1,4 @@
-name: Build Exclave Proxy List
+name: Build Clash & Exclave Configs
 
 on:
   schedule:
@@ -24,19 +24,19 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install requests
+        pip install -r clash/requirements.txt
         
-    - name: Run build script
-      run: python build.py
+    - name: Run Clash build script
+      run: python clash/build_clash.py
       
     - name: Commit and push
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add exclave_list.txt report.txt || true
+        git add clash/output/ || true
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
-          git commit -m "Auto-update proxy list $(date -u '+%Y-%m-%d %H:%M:%S')"
+          git commit -m "Auto-update Clash config $(date -u '+%Y-%m-%d %H:%M:%S')"
           git push
         fi
