@@ -2,7 +2,7 @@ name: Update Proxies
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Каждые 6 часов
+    - cron: '0 * * * *'  # Каждый час в начале часа
   workflow_dispatch:
 
 jobs:
@@ -29,3 +29,4 @@ jobs:
           git add proxies.txt
           git commit -m "Auto: Update proxies $(date)" || exit 0
           git push
+
