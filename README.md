@@ -1,5 +1,3 @@
-# OznoBB
-
 # OznoBB - Automated Proxy Config Subscription
 
 🤖 Автоматическое обновление прокси-конфигов каждый час через GitHub Actions.
