@@ -4,7 +4,7 @@ import requests
 import time
 import logging
 from typing import Optional, Dict, Any, List
-from scripts.constants import (
+from constants import (
     CHECK_HOST_API,
     CHECK_HOST_RESULTS,
     RUSSIAN_NODES,
