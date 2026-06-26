@@ -6,8 +6,8 @@ import ipaddress
 import logging
 from typing import Optional, Dict, Any
 from urllib.parse import quote
-from scripts.check_ping import CheckHost
-from scripts.constants import CC_RUSSIA
+from check_ping import CheckHost
+from constants import CC_RUSSIA
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
