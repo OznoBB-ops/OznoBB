@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-import re
-import urllib.request
-import json
-import socket
-import time
+import re, urllib.request, json, socket, time, concurrent.futures
 
 MIRRORS = [
     {"name": "zieng2/vless_universal.txt", "urls": [
@@ -84,11 +80,15 @@ def api_get(url):
     with urllib.request.urlopen(req, timeout=20) as r:
         return json.loads(r.read().decode("utf-8"))
 
-URI_RE = re.compile(r"^[a-z]+://[^@]*@([^:/#\s]+):(\d+)", re.I)
+# Исправлено: порт теперь не обязателен (если нет, берём 443)
+URI_RE = re.compile(r"^[a-z]+://[^@]*@([^:/#\s]+)(?::(\d+))?", re.I)
 
 def parse_target(line):
     m = URI_RE.match(line.strip())
-    return (m.group(1), int(m.group(2))) if m else None
+    if not m: return None
+    host = m.group(1)
+    port = int(m.group(2)) if m.group(2) else 443
+    return (host, port)
 
 def is_vless(line):
     return line.strip().lower().startswith("vless://")
@@ -129,8 +129,8 @@ def geo_country(ip):
         cc = data.get("country_code")
         if cc and len(cc) == 2:
             return cc.upper()
-    except Exception as e:
-        print(f"geo fail {ip}: {e}")
+    except Exception:
+        pass
     return None
 
 def ping_from_russia(host):
@@ -159,8 +159,7 @@ def ping_from_russia(host):
             except Exception:
                 continue
         return None
-    except Exception as e:
-        print(f"ping fail {host}: {e}")
+    except Exception:
         return None
 
 def rename_checked(line, cc, num):
@@ -197,6 +196,64 @@ def main():
         else:
             removed_non_vless += 1
     print(f"Filter 1: {len(vless_and_rules)} VLESS+rules kept, {removed_non_vless} non-VLESS removed")
+
+    vless_lines = [l for l in vless_and_rules if is_vless(l)]
+    rules = [l for l in vless_and_rules if not is_vless(l)]
+
+    print(f"Processing {len(vless_lines)} VLESS links...")
+
+    def process(line):
+        target = parse_target(line)
+        if not target:
+            return None, None
+        host, port = target
+        if not is_safe(line):
+            return None, None
+        ip = resolve(host)
+        if not ip:
+            return None, None
+        cc = geo_country(ip)
+        
+        # ping = ping_from_russia(host) # Раскомментируй, если нужен пинг (работает ОЧЕНЬ медленно)
+        ping = None 
+        return cc, ping
+
+    results = {}
+    # Многопоточная проверка гео-данных
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+        future_to_line = {executor.submit(process, line): line for line in vless_lines}
+        for future in concurrent.futures.as_completed(future_to_line):
+            line = future_to_line[future]
+            try:
+                results[line] = future.result()
+            except Exception as e:
+                print(f"Error processing {line[:50]}: {e}")
+                results[line] = (None, None)
+
+    checked = []
+    original = []
+    num = 0
+    for line in vless_lines:
+        cc, ping = results.get(line, (None, None))
+        if cc is not None:
+            num += 1
+            renamed = rename_checked(line, cc, num)
+            checked.append(renamed)
+            original.append(line)
+        else:
+            print(f"  SKIP {line[:60]}...")
+
+    # Собираем итоговые списки (проверенные VLESS + правила маршрутизации)
+    final_checked = checked + rules
+    final_original = original + rules
+    
+    with open(OUT_CHECKED, "w", encoding="utf-8") as f:
+        f.write("\n".join(final_checked))
+        
+    with open(OUT_ORIGINAL, "w", encoding="utf-8") as f:
+        f.write("\n".join(final_original))
+
+    print(f"Done. {len(checked)} valid VLESS links written to {OUT_CHECKED}")
 
 if __name__ == "__main__":
     main()
