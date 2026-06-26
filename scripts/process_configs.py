@@ -397,5 +397,4 @@ class ConfigProcessor:
             
             # Step 2: Parse and filter
             logger.info("\n[2/5] PARSING & FILTERING")
-            vless, sni = self.filter_vless
-            (
+            vless, sni = self.filter_vless (
