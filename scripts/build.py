@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-import re, urllib.request, json, socket, time, concurrent.futures
+import re
+import urllib.request
+import json
+import socket
+import time
 
 MIRRORS = [
     {"name": "zieng2/vless_universal.txt", "urls": [
@@ -193,3 +197,6 @@ def main():
         else:
             removed_non_vless += 1
     print(f"Filter 1: {len(vless_and_rules)} VLESS+rules kept, {removed_non_vless} non-VLESS removed")
+
+if __name__ == "__main__":
+    main()
