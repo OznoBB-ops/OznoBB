@@ -1,5 +1,8 @@
 {
-  "filtered_count": 313,
-  "total_unique": 313,
-  "timestamp": "2026-06-26T05:02:30.418187+00:00"
+  "total_configs": 309,
+  "type": "VLESS+Reality+SNI",
+  "safe": true,
+  "timestamp": "2026-06-26T05:19:11.013981Z",
+  "sources": 4,
+  "last_update": "2026-06-26 05:19:11 UTC"
 }
