@@ -1,25 +1,41 @@
-- name: Run build script
-  run: python scripts/build.py
+name: Build Proxies
 
-- name: Check what was generated
-  run: |
-    echo "=== Files in subscription/ ==="
-    ls -lah subscription/
-    echo "=== Content of subscription.txt (first 10 lines) ==="
-    head -10 subscription/subscription.txt || echo "File not found!"
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Каждые 6 часов
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Запуск вручную через UI
 
-- name: Commit and push changes
-  run: |
-    git config user.name "github-actions[bot]"
-    git config user.email "github-actions[bot]@users.noreply.github.com"
-    git add -A
-    git status
-    echo "=== Git status ==="
-    git diff --cached
-    if git diff --quiet && git diff --cached --quiet; then
-      echo "No changes to commit"
-    else
-      git commit -m "Update proxies: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-      git push
-      echo "✓ Pushed successfully"
-    fi
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install requests
+      
+      - name: Run build script
+        run: python scripts/build.py
+      
+      - name: Check what was generated
+        run: |
+          echo "=== Files in subscription/ ==="
+          ls -lah subscription/
+          echo "=== First 5 lines of subscription.txt ==="
+          head -5 subscription/subscription.txt || echo "File not found!"
+      
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add subscription/
+          git diff --cached --quiet || (git commit -m "Update proxies: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" && git push)
