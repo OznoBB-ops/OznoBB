@@ -122,6 +122,31 @@ def is_reality(line):
     s = line.lower()
     return "security=reality" in s
 
+def is_safe(line):
+    """Проверяем безопасность VLESS конфигурации"""
+    s = line.lower()
+    
+    # Reality — всегда безопасно (нет сертификата для проверки)
+    if "security=reality" in s:
+        return True
+    
+    # TLS — безопасно, если нет insecure=1
+    if "security=tls" in s:
+        if "insecure=1" in s or "allowinsecure=1" in s:
+            return False
+        return True
+    
+    # Без шифрования — небезопасно
+    if "security=none" in s or "security=" in s:
+        return False
+    
+    # Если есть insecure=1 в любом случае — небезопасно
+    if "insecure=1" in s or "allowinsecure=1" in s:
+        return False
+    
+    # По умолчанию считаем безопасным (если security не указан явно как none)
+    return True
+
 def resolve(host):
     try:
         socket.inet_aton(host)
@@ -204,27 +229,40 @@ def main():
         seen.add(s)
         unique.append(s)
 
-    # ФИЛЬТР: оставляем только VLESS + SNI правила (не URI)
+    # ФИЛЬТР 1: оставляем только VLESS + SNI правила (не URI)
     vless_and_rules = []
-    removed_count = 0
+    removed_non_vless = 0
     for line in unique:
         if is_vless(line) or not parse_target(line):  # VLESS или не-URI (правила)
             vless_and_rules.append(line)
         else:
-            removed_count += 1
+            removed_non_vless += 1
     
-    print(f"\n=== Filtered: {len(vless_and_rules)} VLESS+rules kept, {removed_count} non-VLESS removed ===")
+    print(f"\n=== Filter 1: {len(vless_and_rules)} VLESS+rules kept, {removed_non_vless} non-VLESS removed ===")
 
-    # ============ ОРИГИНАЛЬНАЯ ПОДПИСКА (только VLESS + правила) ============
+    # ФИЛЬТР 2: проверяем безопасность VLESS
+    safe_vless_and_rules = []
+    removed_unsafe = 0
+    for line in vless_and_rules:
+        if not parse_target(line):  # не URI (правила) — оставляем
+            safe_vless_and_rules.append(line)
+        elif is_safe(line):  # URI + безопасный
+            safe_vless_and_rules.append(line)
+        else:
+            removed_unsafe += 1
+    
+    print(f"=== Filter 2: {len(safe_vless_and_rules)} safe kept, {removed_unsafe} unsafe removed ===")
+
+    # ============ ОРИГИНАЛЬНАЯ ПОДПИСКА (только безопасные VLESS + правила) ============
     with open(OUT_ORIGINAL, "w", encoding="utf-8") as f:
-        for line in vless_and_rules:
+        for line in safe_vless_and_rules:
             f.write(line + "\n")
-    print(f"\n=== Original: {len(vless_and_rules)} lines -> {OUT_ORIGINAL} ===")
+    print(f"\n=== Original: {len(safe_vless_and_rules)} lines -> {OUT_ORIGINAL} ===")
 
     # ============ ПРОВЕРЕННАЯ ПОДПИСКА (гео + пинг из РФ) ============
     servers = []
     other = []
-    for line in vless_and_rules:
+    for line in safe_vless_and_rules:
         if parse_target(line):  # только URI (VLESS серверы)
             servers.append(line)
         else:
@@ -253,10 +291,10 @@ def main():
             if done % 20 == 0:
                 print(f"progress: {done}/{total}")
 
-    # ФИЛЬТР: убираем мертвые серверы (ping_ms is None)
+    # ФИЛЬТР 3: убираем мертвые серверы (ping_ms is None)
     alive = [r for r in results if r[2] is not None]
     dead_count = len(results) - len(alive)
-    print(f"\n=== Filtered: {len(alive)} alive, {dead_count} dead removed ===")
+    print(f"\n=== Filter 3: {len(alive)} alive, {dead_count} dead removed ===")
 
     # Сортировка: Reality сверху, потом по пингу
     alive.sort(key=lambda x: (
