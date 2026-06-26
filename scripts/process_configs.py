@@ -397,4 +397,22 @@ class ConfigProcessor:
             
             # Step 2: Parse and filter
             logger.info("\n[2/5] PARSING & FILTERING")
-            vless, sni = self.filter_vless (
+            vless, sni = self.filter_vless(content)
+    
+    # Step 3: Deduplicate
+    vless_list, sni_list = processor.deduplicate_and_sort(vless, sni)
+    
+    # Step 4: Save original
+    processor.save_original(vless_list, sni_list)
+    
+    # Step 5: Check ping and get alive configs
+    ping_checker = PingChecker()
+    alive_configs = ping_checker.check_vless_batch(vless_list)
+    
+    # Step 6: Save subscription
+    processor.save_subscription(vless_list, sni_list, alive_configs)
+    
+    print("\n✅ Done!")
+
+if __name__ == '__main__':
+    main()
