@@ -2,82 +2,56 @@
 import re, urllib.request, json, socket, time, concurrent.futures
 
 MIRRORS = [
-    # ============ zieng2/wl ============
-    {
-        "name": "zieng2/vless_universal.txt",
-        "urls": [
-            "https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt",
-            "https://codeberg.org/zieng2/wl/raw/branch/main/vless_universal.txt",
-            "https://gitlab.com/zieng2/wl/raw/main/vless_universal.txt",
-            "https://hub.mos.ru/zieng2/wl/raw/main/list_universal.txt",
-            "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
-        ],
-    },
-    # ============ igareck: BLACK_VLESS_RUS ============
-    {
-        "name": "igareck/BLACK_VLESS_RUS.txt",
-        "urls": [
-            "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS.txt",
-            "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/BLACK_VLESS_RUS.txt",
-            "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_VLESS_RUS.txt",
-            "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_VLESS_RUS.txt",
-            "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/BLACK_VLESS_RUS.txt",
-            "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/BLACK_VLESS_RUS.txt",
-            "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
-        ],
-    },
-    # ============ igareck: BLACK_SS+All_RUS ============
-    {
-        "name": "igareck/BLACK_SS+All_RUS.txt",
-        "urls": [
-            "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_SS%2BAll_RUS.txt",
-            "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/BLACK_SS%2BAll_RUS.txt",
-            "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_SS%2BAll_RUS.txt",
-            "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_SS%2BAll_RUS.txt",
-            "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/BLACK_SS%2BAll_RUS.txt",
-            "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/BLACK_SS%2BAll_RUS.txt",
-            "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt",
-        ],
-    },
-    # ============ igareck: WHITE-CIDR-RU-all ============
-    {
-        "name": "igareck/WHITE-CIDR-RU-all.txt",
-        "urls": [
-            "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/WHITE-CIDR-RU-all.txt",
-            "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/WHITE-CIDR-RU-all.txt",
-            "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-CIDR-RU-all.txt",
-            "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-CIDR-RU-all.txt",
-            "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/WHITE-CIDR-RU-all.txt",
-            "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/WHITE-CIDR-RU-all.txt",
-            "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-all.txt",
-        ],
-    },
-    # ============ igareck: WHITE-SNI-RU-all ============
-    {
-        "name": "igareck/WHITE-SNI-RU-all.txt",
-        "urls": [
-            "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/WHITE-SNI-RU-all.txt",
-            "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/WHITE-SNI-RU-all.txt",
-            "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-SNI-RU-all.txt",
-            "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-SNI-RU-all.txt",
-            "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/WHITE-SNI-RU-all.txt",
-            "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/WHITE-SNI-RU-all.txt",
-            "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
-        ],
-    },
+    {"name": "zieng2/vless_universal.txt", "urls": [
+        "https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt",
+        "https://codeberg.org/zieng2/wl/raw/branch/main/vless_universal.txt",
+        "https://gitlab.com/zieng2/wl/raw/main/vless_universal.txt",
+        "https://hub.mos.ru/zieng2/wl/raw/main/list_universal.txt",
+        "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
+    ]},
+    {"name": "igareck/BLACK_VLESS_RUS.txt", "urls": [
+        "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS.txt",
+        "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/BLACK_VLESS_RUS.txt",
+        "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_VLESS_RUS.txt",
+        "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_VLESS_RUS.txt",
+        "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/BLACK_VLESS_RUS.txt",
+        "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/BLACK_VLESS_RUS.txt",
+        "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
+    ]},
+    {"name": "igareck/BLACK_SS+All_RUS.txt", "urls": [
+        "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_SS%2BAll_RUS.txt",
+        "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/BLACK_SS%2BAll_RUS.txt",
+        "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_SS%2BAll_RUS.txt",
+        "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/BLACK_SS%2BAll_RUS.txt",
+        "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/BLACK_SS%2BAll_RUS.txt",
+        "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/BLACK_SS%2BAll_RUS.txt",
+        "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_SS%2BAll_RUS.txt",
+    ]},
+    {"name": "igareck/WHITE-CIDR-RU-all.txt", "urls": [
+        "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/WHITE-CIDR-RU-all.txt",
+        "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/WHITE-CIDR-RU-all.txt",
+        "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-CIDR-RU-all.txt",
+        "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-CIDR-RU-all.txt",
+        "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/WHITE-CIDR-RU-all.txt",
+        "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/WHITE-CIDR-RU-all.txt",
+        "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-all.txt",
+    ]},
+    {"name": "igareck/WHITE-SNI-RU-all.txt", "urls": [
+        "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/WHITE-SNI-RU-all.txt",
+        "https://gitlab.com/igareck/vpn-configs-for-russia/-/raw/main/WHITE-SNI-RU-all.txt",
+        "https://codeberg.org/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-SNI-RU-all.txt",
+        "https://gitea.com/igareck/vpn-configs-for-russia/raw/branch/main/WHITE-SNI-RU-all.txt",
+        "https://git.sr.ht/~igareck/vpn-configs-for-russia/blob/main/WHITE-SNI-RU-all.txt",
+        "https://bitbucket.org/igareck/vpn-configs-for-russia/raw/main/WHITE-SNI-RU-all.txt",
+        "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
+    ]},
 ]
 
 OUT_CHECKED = "subscription.txt"
 OUT_ORIGINAL = "original.txt"
 GEO_TIMEOUT = 4
 PING_TIMEOUT = 15
-
-RU_NODES = [
-    "ru1.node.check-host.net",
-    "ru2.node.check-host.net",
-    "ru3.node.check-host.net",
-]
-
+RU_NODES = ["ru1.node.check-host.net", "ru2.node.check-host.net", "ru3.node.check-host.net"]
 HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 
 def flag(cc):
@@ -85,21 +59,20 @@ def flag(cc):
         return "🏴‍☠️"
     return chr(ord(cc[0].upper()) + 127397) + chr(ord(cc[1].upper()) + 127397)
 
-def fetch_with_fallback(mirror_entry):
-    name = mirror_entry["name"]
-    for url in mirror_entry["urls"]:
+def fetch_with_fallback(entry):
+    name = entry["name"]
+    for url in entry["urls"]:
         try:
-            req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"})
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=20) as r:
                 if r.status == 200:
                     data = r.read().decode("utf-8", errors="ignore")
                     if data.strip():
-                        print(f"  ✓ {name} from {url}")
+                        print(f"  OK {name} from {url}")
                         return data
         except Exception as e:
-            print(f"  ✗ {name} failed {url}: {e}")
-            continue
-    print(f"  ⚠ ALL MIRRORS FAILED for {name}")
+            print(f"  FAIL {name} {url}: {e}")
+    print(f"  ALL MIRRORS FAILED for {name}")
     return ""
 
 def api_get(url):
@@ -114,37 +87,23 @@ def parse_target(line):
     return (m.group(1), int(m.group(2))) if m else None
 
 def is_vless(line):
-    """Проверяем что это VLESS протокол"""
     return line.strip().lower().startswith("vless://")
 
 def is_reality(line):
-    """Проверяем что это VLESS + Reality"""
-    s = line.lower()
-    return "security=reality" in s
+    return "security=reality" in line.lower()
 
 def is_safe(line):
-    """Проверяем безопасность VLESS конфигурации"""
     s = line.lower()
-    
-    # Reality — всегда безопасно (нет сертификата для проверки)
     if "security=reality" in s:
         return True
-    
-    # TLS — безопасно, если нет insecure=1
     if "security=tls" in s:
         if "insecure=1" in s or "allowinsecure=1" in s:
             return False
         return True
-    
-    # Без шифрования — небезопасно
-    if "security=none" in s or "security=" in s:
+    if "security=none" in s:
         return False
-    
-    # Если есть insecure=1 в любом случае — небезопасно
     if "insecure=1" in s or "allowinsecure=1" in s:
         return False
-    
-    # По умолчанию считаем безопасным (если security не указан явно как none)
     return True
 
 def resolve(host):
@@ -177,18 +136,16 @@ def ping_from_russia(host):
         req = urllib.request.Request(url, headers=HEADERS)
         with urllib.request.urlopen(req, timeout=15) as r:
             start = json.loads(r.read().decode("utf-8"))
-
         request_id = start.get("request_id")
         if not request_id:
             return None
-
         result_url = f"https://api.check-host.net/check-result/{request_id}"
         for _ in range(6):
             time.sleep(3)
             try:
                 result = api_get(result_url)
                 pings = []
-                for node_name, node_data in result.items():
+                for node_data in result.values():
                     if node_data and isinstance(node_data, list):
                         for packet in node_data:
                             if isinstance(packet, list) and len(packet) >= 2 and packet[1] is not None:
@@ -203,7 +160,6 @@ def ping_from_russia(host):
         return None
 
 def rename_checked(line, cc, num):
-    """Формат: 🇷🇺RU#1"""
     line = line.strip()
     if not line or line.startswith("#"):
         return line
@@ -220,55 +176,48 @@ def main():
         if data:
             all_lines.extend(data.splitlines())
 
-    # Дедупликация
     seen = set()
     unique = []
     for l in all_lines:
         s = l.strip()
-        if not s or s in seen: continue
+        if not s or s in seen:
+            continue
         seen.add(s)
         unique.append(s)
 
-    # ФИЛЬТР 1: оставляем только VLESS + SNI правила (не URI)
     vless_and_rules = []
     removed_non_vless = 0
     for line in unique:
-        if is_vless(line) or not parse_target(line):  # VLESS или не-URI (правила)
+        if is_vless(line) or not parse_target(line):
             vless_and_rules.append(line)
         else:
             removed_non_vless += 1
-    
-    print(f"\n=== Filter 1: {len(vless_and_rules)} VLESS+rules kept, {removed_non_vless} non-VLESS removed ===")
+    print(f"Filter 1: {len(vless_and_rules)} VLESS+rules kept, {removed_non_vless} non-VLESS removed")
 
-    # ФИЛЬТР 2: проверяем безопасность VLESS
     safe_vless_and_rules = []
     removed_unsafe = 0
     for line in vless_and_rules:
-        if not parse_target(line):  # не URI (правила) — оставляем
+        if not parse_target(line):
             safe_vless_and_rules.append(line)
-        elif is_safe(line):  # URI + безопасный
+        elif is_safe(line):
             safe_vless_and_rules.append(line)
         else:
             removed_unsafe += 1
-    
-    print(f"=== Filter 2: {len(safe_vless_and_rules)} safe kept, {removed_unsafe} unsafe removed ===")
+    print(f"Filter 2: {len(safe_vless_and_rules)} safe kept, {removed_unsafe} unsafe removed")
 
-    # ============ ОРИГИНАЛЬНАЯ ПОДПИСКА (только безопасные VLESS + правила) ============
     with open(OUT_ORIGINAL, "w", encoding="utf-8") as f:
         for line in safe_vless_and_rules:
             f.write(line + "\n")
-    print(f"\n=== Original: {len(safe_vless_and_rules)} lines -> {OUT_ORIGINAL} ===")
+    print(f"Original: {len(safe_vless_and_rules)} lines -> {OUT_ORIGINAL}")
 
-    # ============ ПРОВЕРЕННАЯ ПОДПИСКА (гео + пинг из РФ) ============
     servers = []
     other = []
     for line in safe_vless_and_rules:
-        if parse_target(line):  # только URI (VLESS серверы)
+        if parse_target(line):
             servers.append(line)
         else:
-            other.append(line)  # правила (SNI, CIDR)
-
-    print(f"\n=== Checking {len(servers)} VLESS servers, {len(other)} rules ===")
+            other.append(line)
+    print(f"Checking {len(servers)} VLESS servers, {len(other)} rules")
 
     def job(line):
         t = parse_target(line)
@@ -291,19 +240,12 @@ def main():
             if done % 20 == 0:
                 print(f"progress: {done}/{total}")
 
-    # ФИЛЬТР 3: убираем мертвые серверы (ping_ms is None)
     alive = [r for r in results if r[2] is not None]
     dead_count = len(results) - len(alive)
-    print(f"\n=== Filter 3: {len(alive)} alive, {dead_count} dead removed ===")
+    print(f"Filter 3: {len(alive)} alive, {dead_count} dead removed")
 
-    # Сортировка: Reality сверху, потом по пингу
-    alive.sort(key=lambda x: (
-        0 if x[3] else 1,  # Reality первыми
-        x[2],              # потом по пингу
-        x[0]
-    ))
+    alive.sort(key=lambda x: (0 if x[3] else 1, x[2], x[0]))
 
-    # Нумерация по странам
     country_counters = {}
     numbered = []
     for line, cc, ms, reality in alive:
@@ -313,7 +255,6 @@ def main():
         country_counters[cc_key] += 1
         numbered.append((line, cc, country_counters[cc_key]))
 
-    # Добавляем SNI правила в конец (без нумерации)
     for line in other:
         numbered.append((line, None, None))
 
@@ -323,7 +264,7 @@ def main():
                 f.write(rename_checked(line, cc, num) + "\n")
             else:
                 f.write(line + "\n")
-    print(f"\n=== Checked: {len(numbered)} lines -> {OUT_CHECKED} ===")
+    print(f"Checked: {len(numbered)} lines -> {OUT_CHECKED}")
 
 if __name__ == "__main__":
     main()
