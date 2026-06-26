@@ -20,6 +20,7 @@ BLACKLIST = [
     "tls=false"
 ]
 
+# ---------- FETCH ----------
 def fetch(url):
     try:
         r = requests.get(url, timeout=20)
@@ -29,6 +30,7 @@ def fetch(url):
     except:
         return []
 
+# ---------- FILTER ----------
 def is_vless(x):
     return x.startswith("vless://") and "@" in x
 
@@ -36,6 +38,7 @@ def is_clean(x):
     x_low = x.lower()
     return not any(b in x_low for b in BLACKLIST)
 
+# ---------- PARSE ----------
 def extract_host(x):
     try:
         return x.split("@")[1].split("?")[0].split(":")[0]
@@ -48,6 +51,7 @@ def extract_uuid(x):
     except:
         return None
 
+# ---------- CHECK ----------
 def check_node(x):
     host = extract_host(x)
     if not host:
@@ -64,6 +68,7 @@ def check_node(x):
     except:
         return None
 
+# ---------- CLASH ----------
 def generate_clash(nodes):
     proxies = []
 
@@ -82,14 +87,44 @@ def generate_clash(nodes):
         "proxy-groups": [
             {
                 "name": "AUTO",
-                "type": "select",
+                "type": "url-test",
+                "url": "http://www.gstatic.com/generate_204",
+                "interval": 300,
                 "proxies": [p["name"] for p in proxies]
+            },
+            {
+                "name": "PROXY",
+                "type": "select",
+                "proxies": ["AUTO"] + [p["name"] for p in proxies]
             }
+        ],
+        "rules": [
+            "GEOIP,RU,DIRECT",
+            "IP-CIDR,10.0.0.0/8,DIRECT",
+            "IP-CIDR,172.16.0.0/12,DIRECT",
+            "IP-CIDR,192.168.0.0/16,DIRECT",
+
+            "DOMAIN-SUFFIX,doubleclick.net,REJECT",
+            "DOMAIN-SUFFIX,google-analytics.com,REJECT",
+            "DOMAIN-SUFFIX,googlesyndication.com,REJECT",
+
+            "DOMAIN-SUFFIX,youtube.com,PROXY",
+            "DOMAIN-SUFFIX,googlevideo.com,PROXY",
+            "DOMAIN-SUFFIX,ytimg.com,PROXY",
+
+            "DOMAIN-SUFFIX,netflix.com,PROXY",
+            "DOMAIN-SUFFIX,nflxvideo.net,PROXY",
+
+            "DOMAIN-SUFFIX,tiktok.com,PROXY",
+            "DOMAIN-SUFFIX,instagram.com,PROXY",
+
+            "MATCH,PROXY"
         ]
     }
 
     Path("clash.yaml").write_text(json.dumps(data, indent=2))
 
+# ---------- SING-BOX ----------
 def generate_singbox(nodes):
     outbounds = []
 
@@ -106,14 +141,44 @@ def generate_singbox(nodes):
         })
 
     data = {
+        "dns": {
+            "servers": [
+                "https://dns.google/dns-query",
+                "https://cloudflare-dns.com/dns-query"
+            ],
+            "strategy": "ipv4_only"
+        },
         "outbounds": outbounds,
         "route": {
+            "rules": [
+                {
+                    "ip_cidr": [
+                        "10.0.0.0/8",
+                        "172.16.0.0/12",
+                        "192.168.0.0/16"
+                    ],
+                    "outbound": "direct"
+                },
+                {
+                    "geoip": ["ru"],
+                    "outbound": "direct"
+                },
+                {
+                    "domain_suffix": [
+                        "youtube.com",
+                        "googlevideo.com",
+                        "ytimg.com"
+                    ],
+                    "outbound": "node-0"
+                }
+            ],
             "final": "node-0" if outbounds else "direct"
         }
     }
 
     Path("singbox.json").write_text(json.dumps(data, indent=2))
 
+# ---------- MAIN ----------
 def main():
     all_data = []
 
