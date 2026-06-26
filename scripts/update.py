@@ -1,13 +1,15 @@
 import requests
 import socket
+import time
+import json
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 SOURCES = [
-    "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
     "https://raw.githubusercontent.com/zieng2/wl/main/vless_universal.txt",
-    "https://codeberg.org/zieng2/wl/raw/branch/main/vless_universal.txt",
-    "https://gitlab.com/zieng2/wl/raw/main/vless_universal.txt",
-    "https://hub.mos.ru/zieng2/wl/raw/main/list_universal.txt",
+    "https://gitverse.ru/api/repos/zieng2/wl/raw/branch/master/list_universal.txt",
+    "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-SNI-RU-all.txt",
+    "https://raw.githack.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-all.txt",
     "https://raw.githack.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
 ]
 
@@ -15,8 +17,6 @@ BLACKLIST = [
     "insecure",
     "allowinsecure",
     "security=none",
-    "security=NONE",
-    "insecure=true",
     "tls=false"
 ]
 
@@ -38,17 +38,81 @@ def is_clean(x):
 
 def extract_host(x):
     try:
-        h = x.split("@")[1].split("?")[0]
-        return h.split(":")[0]
+        return x.split("@")[1].split("?")[0].split(":")[0]
     except:
         return None
 
-def tcp_check(host):
+def extract_uuid(x):
     try:
-        socket.create_connection((host, 443), timeout=0.6).close()
-        return True
+        return x.split("vless://")[1].split("@")[0]
     except:
-        return False
+        return None
+
+def check_node(x):
+    host = extract_host(x)
+    if not host:
+        return None
+
+    try:
+        socket.gethostbyname(host)
+
+        start = time.time()
+        socket.create_connection((host, 443), timeout=0.8).close()
+        latency = time.time() - start
+
+        return (x, latency)
+    except:
+        return None
+
+def generate_clash(nodes):
+    proxies = []
+
+    for i, x in enumerate(nodes):
+        proxies.append({
+            "name": f"NODE-{i}",
+            "type": "vless",
+            "server": extract_host(x),
+            "port": 443,
+            "uuid": extract_uuid(x),
+            "tls": True
+        })
+
+    data = {
+        "proxies": proxies,
+        "proxy-groups": [
+            {
+                "name": "AUTO",
+                "type": "select",
+                "proxies": [p["name"] for p in proxies]
+            }
+        ]
+    }
+
+    Path("clash.yaml").write_text(json.dumps(data, indent=2))
+
+def generate_singbox(nodes):
+    outbounds = []
+
+    for i, x in enumerate(nodes):
+        outbounds.append({
+            "type": "vless",
+            "tag": f"node-{i}",
+            "server": extract_host(x),
+            "server_port": 443,
+            "uuid": extract_uuid(x),
+            "tls": {
+                "enabled": True
+            }
+        })
+
+    data = {
+        "outbounds": outbounds,
+        "route": {
+            "final": "node-0" if outbounds else "direct"
+        }
+    }
+
+    Path("singbox.json").write_text(json.dumps(data, indent=2))
 
 def main():
     all_data = []
@@ -61,20 +125,30 @@ def main():
 
     unique = list(dict.fromkeys(data))
 
-    alive = []
-    for x in unique:
-        host = extract_host(x)
-        if host and tcp_check(host):
-            alive.append(x)
+    results = []
 
-    reality = [x for x in alive if "security=reality" in x]
-    tls = [x for x in alive if "security=reality" not in x]
+    with ThreadPoolExecutor(max_workers=60) as ex:
+        futures = [ex.submit(check_node, x) for x in unique]
 
-    result = reality + tls
+        for f in as_completed(futures):
+            r = f.result()
+            if r:
+                results.append(r)
 
-    Path("subscription.txt").write_text("\n".join(result))
+    results.sort(key=lambda x: x[1])
 
-    print(f"OK: {len(result)} live nodes")
+    alive = [x[0] for x in results]
+
+    reality = [x for x in alive if "reality" in x.lower()]
+    tls = [x for x in alive if "reality" not in x.lower()]
+    final_list = reality + tls
+
+    Path("subscription.txt").write_text("\n".join(final_list))
+
+    generate_clash(final_list)
+    generate_singbox(final_list)
+
+    print(f"OK: {len(final_list)} nodes | best: {results[0][1] if results else 'N/A'}")
 
 if __name__ == "__main__":
     main()
