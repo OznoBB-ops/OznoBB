@@ -1,42 +1,25 @@
-name: Update Subscriptions
+- name: Run build script
+  run: python scripts/build.py
 
-on:
-  schedule:
-    - cron: '0 * * * *'  # Каждый час
-  workflow_dispatch:     # Ручной запуск
+- name: Check what was generated
+  run: |
+    echo "=== Files in subscription/ ==="
+    ls -lah subscription/
+    echo "=== Content of subscription.txt (first 10 lines) ==="
+    head -10 subscription/subscription.txt || echo "File not found!"
 
-jobs:
-  update:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-          
-      - name: Install dependencies
-        run: |
-          pip install requests
-          
-      - name: Fetch and process configs
-        run: python scripts/process_configs.py
-        
-      - name: Check ping (Russia nodes)
-        run: python scripts/check_ping.py
-        
-      - name: Commit changes
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add subscription.txt original.txt
-          git commit -m "Auto-update configs $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes"
-          
-      - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main
+- name: Commit and push changes
+  run: |
+    git config user.name "github-actions[bot]"
+    git config user.email "github-actions[bot]@users.noreply.github.com"
+    git add -A
+    git status
+    echo "=== Git status ==="
+    git diff --cached
+    if git diff --quiet && git diff --cached --quiet; then
+      echo "No changes to commit"
+    else
+      git commit -m "Update proxies: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+      git push
+      echo "✓ Pushed successfully"
+    fi
