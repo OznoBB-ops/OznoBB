@@ -1,0 +1,42 @@
+name: Update Subscriptions
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Каждый час
+  workflow_dispatch:     # Ручной запуск
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install requests
+          
+      - name: Fetch and process configs
+        run: python scripts/process_configs.py
+        
+      - name: Check ping (Russia nodes)
+        run: python scripts/check_ping.py
+        
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add subscription.txt original.txt
+          git commit -m "Auto-update configs $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes"
+          
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
