@@ -1,9 +1,5 @@
 {
-  "timestamp": "2026-06-26T04:57:02.608217",
-  "verified_count": 350,
-  "original_count": 350,
-  "filters_applied": [
-    "reality",
-    "tls"
-  ]
+  "filtered_count": 313,
+  "total_unique": 313,
+  "timestamp": "2026-06-26T05:01:45.489148+00:00"
 }
