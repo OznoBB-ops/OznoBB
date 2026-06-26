@@ -1,4 +1,5 @@
 import requests
+import socket
 from pathlib import Path
 
 SOURCES = [
@@ -11,11 +12,12 @@ SOURCES = [
 ]
 
 BLACKLIST = [
-    "insecure=1",
-    "insecure=true",
+    "insecure",
     "allowinsecure",
     "security=none",
-    "security=NONE"
+    "security=NONE",
+    "insecure=true",
+    "tls=false"
 ]
 
 def fetch(url):
@@ -23,20 +25,30 @@ def fetch(url):
         r = requests.get(url, timeout=20)
         if r.status_code != 200:
             return []
-        return [i.strip() for i in r.text.splitlines() if i.strip()]
+        return [x.strip() for x in r.text.splitlines() if x.strip()]
     except:
         return []
 
-def is_valid_vless(x):
-    if not x.startswith("vless://"):
-        return False
-    if "@" not in x:
-        return False
-    return True
+def is_vless(x):
+    return x.startswith("vless://") and "@" in x
 
 def is_clean(x):
     x_low = x.lower()
     return not any(b in x_low for b in BLACKLIST)
+
+def extract_host(x):
+    try:
+        h = x.split("@")[1].split("?")[0]
+        return h.split(":")[0]
+    except:
+        return None
+
+def tcp_check(host):
+    try:
+        socket.create_connection((host, 443), timeout=0.6).close()
+        return True
+    except:
+        return False
 
 def main():
     all_data = []
@@ -44,24 +56,25 @@ def main():
     for url in SOURCES:
         all_data.extend(fetch(url))
 
-    data = [x for x in all_data if is_valid_vless(x)]
+    data = [x for x in all_data if is_vless(x)]
     data = [x for x in data if is_clean(x)]
 
-    seen = set()
-    unique = []
-    for x in data:
-        if x not in seen:
-            seen.add(x)
-            unique.append(x)
+    unique = list(dict.fromkeys(data))
 
-    reality = [x for x in unique if "security=reality" in x]
-    tls = [x for x in unique if "security=reality" not in x]
+    alive = []
+    for x in unique:
+        host = extract_host(x)
+        if host and tcp_check(host):
+            alive.append(x)
+
+    reality = [x for x in alive if "security=reality" in x]
+    tls = [x for x in alive if "security=reality" not in x]
 
     result = reality + tls
 
     Path("subscription.txt").write_text("\n".join(result))
 
-    print(f"OK: {len(result)} nodes")
+    print(f"OK: {len(result)} live nodes")
 
 if __name__ == "__main__":
     main()
